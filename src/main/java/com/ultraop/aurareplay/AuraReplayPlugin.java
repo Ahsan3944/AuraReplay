@@ -45,10 +45,11 @@ public final class AuraReplayPlugin extends JavaPlugin {
 
         PersistentAuraReplayCommand command = new PersistentAuraReplayCommand(engine);
         if (getCommand("aurareplay") != null) { getCommand("aurareplay").setExecutor(command); getCommand("aurareplay").setTabCompleter(command); }
-        if (getCommand("arstudio") != null) getCommand("arstudio").setExecutor(new StudioCommand(engine));
-        getServer().getPluginManager().registerEvents(new StudioListener(engine.studioController()), this);
-        getServer().getPluginManager().registerEvents(new SceneStudioListener(engine), this);
+        if (getCommand("arstudio") != null) getCommand("arstudio").setExecutor(new StudioCommand(engine.studioController()));
+
         ActorSourceBrowser sourceBrowser = new ActorSourceBrowser(engine);
+        getServer().getPluginManager().registerEvents(new StudioListener(engine.studioController(), sourceBrowser), this);
+        getServer().getPluginManager().registerEvents(new SceneStudioListener(engine), this);
         getServer().getPluginManager().registerEvents(new ActorSourceBrowserListener(sourceBrowser, engine), this);
         getLogger().info("AuraReplay foundation enabled with persistent project and recording storage.");
     }
