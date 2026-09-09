@@ -41,10 +41,19 @@ public final class RecordingFrameCache {
     /** Loads a bounded neighborhood. Intended for an async executor, never the server tick thread. */
     public synchronized void prefetch(int center, int radius) throws IOException {
         if (radius < 0) throw new IllegalArgumentException("radius must be >= 0");
+        if (center < 0) throw new IllegalArgumentException("center must be >= 0");
         int start = Math.max(0, center - radius);
         int end = center + radius;
+        if (end < center) end = Integer.MAX_VALUE;
         for (int i = start; i <= end; i++) {
-            if (!frames.containsKey(i)) frames.put(i, RecordingIndexedFile.readFrame(path, i));
+            if (!frames.containsKey(i)) {
+                try { frames.put(i, RecordingIndexedFile.readFrame(path, i)); }
+                catch (IndexOutOfBoundsException | IOException e) {
+                    if (i == end) throw e;
+                    break;
+                }
+            }
+            if (i == Integer.MAX_VALUE) break;
         }
     }
 
