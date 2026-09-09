@@ -35,7 +35,8 @@ public final class CameraController {
         return true;
     }
 
-    public double tick(Player viewer) {
+    /** Returns the current playback tick for the viewer's active camera session. */
+    public double currentTick(Player viewer) {
         CameraPlaybackSession session = sessions.get(viewer.getUniqueId());
         return session == null ? 0.0 : session.tick();
     }
