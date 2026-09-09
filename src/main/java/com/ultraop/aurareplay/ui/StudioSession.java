@@ -5,7 +5,7 @@ import java.util.UUID;
 
 /** Viewer-local Studio navigation and selection state. */
 public final class StudioSession {
-    public enum Page { ROOT, CATEGORY, ACTORS, ACTOR, TRANSFORM, MOTION }
+    public enum Page { ROOT, CATEGORY, ACTORS, ACTOR, TRANSFORM, MOTION, IDENTITY, EQUIPMENT }
     private final UUID viewerId;
     private Page page=Page.ROOT;
     private String category;
@@ -22,4 +22,6 @@ public final class StudioSession {
     public void pageActor(){page=Page.ACTOR;category="Actors / "+selectedActor;}
     public void transform(){page=Page.TRANSFORM;category="Transform";}
     public void motion(){page=Page.MOTION;category="Motion";}
+    public void identity(){page=Page.IDENTITY;category="Identity";}
+    public void equipment(){page=Page.EQUIPMENT;category="Equipment";}
 }
