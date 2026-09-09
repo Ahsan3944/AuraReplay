@@ -47,17 +47,10 @@ public final class SceneManager {
         String key = normalize(name);
         Scene scene = scenes.get(key);
         if (scene == null) return false;
-
-        activeSessions.entrySet().stream()
-                .filter(entry -> entry.getValue().scene() == scene)
-                .map(Map.Entry::getKey)
-                .toList()
-                .forEach(uuid -> {
-                    Player viewer = Bukkit.getPlayer(uuid);
-                    if (viewer != null) stop(viewer);
-                    else activeSessions.remove(uuid);
-                });
-
+        activeSessions.entrySet().stream().filter(entry -> entry.getValue().scene() == scene).map(Map.Entry::getKey).toList().forEach(uuid -> {
+            Player viewer = Bukkit.getPlayer(uuid);
+            if (viewer != null) stop(viewer); else activeSessions.remove(uuid);
+        });
         scenes.remove(key, scene);
         sceneCameras.unbind(scene);
         return true;
@@ -98,6 +91,17 @@ public final class SceneManager {
         return scene != null && scene.removeActor(actorId);
     }
 
+    /** Removes an actor reference from every scene and stops any viewer playback using it. Main-thread only. */
+    public int removeActorEverywhere(ActorId actorId) {
+        if (actorId == null) return 0;
+        playbackController.stopUsingActor(actorId);
+        int removed = 0;
+        for (Scene scene : scenes.values()) {
+            if (scene.removeActor(actorId)) removed++;
+        }
+        return removed;
+    }
+
     public int play(Player viewer, String sceneName) {
         Scene scene = get(sceneName).orElseThrow(() -> new IllegalArgumentException("scene not found: " + sceneName));
         stop(viewer);
@@ -123,8 +127,7 @@ public final class SceneManager {
 
     private void ensureDuration(Scene scene) {
         if (scene.timeline().durationTicks() != 0L) return;
-        long duration = scene.actorIds().stream().map(actorManager::get).flatMap(Optional::stream)
-                .mapToLong(actor -> actor.recording().durationTicks()).max().orElse(0L);
+        long duration = scene.actorIds().stream().map(actorManager::get).flatMap(Optional::stream).mapToLong(actor -> actor.recording().durationTicks()).max().orElse(0L);
         scene.timeline().setDurationTicks(duration);
     }
 
