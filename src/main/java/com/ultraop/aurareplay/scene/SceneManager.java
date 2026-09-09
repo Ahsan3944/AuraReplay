@@ -102,6 +102,17 @@ public final class SceneManager {
         return removed;
     }
 
+    /** Removes scene references to actors that are no longer present in the actor registry. */
+    public int reconcileActorReferences() {
+        int removed = 0;
+        for (Scene scene : scenes.values()) {
+            for (ActorId actorId : scene.actorIds()) {
+                if (actorManager.get(actorId).isEmpty() && scene.removeActor(actorId)) removed++;
+            }
+        }
+        return removed;
+    }
+
     public int play(Player viewer, String sceneName) {
         Scene scene = get(sceneName).orElseThrow(() -> new IllegalArgumentException("scene not found: " + sceneName));
         stop(viewer);
