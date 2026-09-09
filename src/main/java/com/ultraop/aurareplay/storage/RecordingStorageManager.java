@@ -1,9 +1,12 @@
 package com.ultraop.aurareplay.storage;
 
+import com.ultraop.aurareplay.actor.ActorPlaybackSource;
+import com.ultraop.aurareplay.actor.IndexedActorPlaybackSource;
 import com.ultraop.aurareplay.recording.Recording;
 import com.ultraop.aurareplay.recording.RecordingBinaryCodec;
 import com.ultraop.aurareplay.recording.RecordingIndexedFile;
 import com.ultraop.aurareplay.recording.RecordingManager;
+import com.ultraop.aurareplay.recording.snapshot.TickSnapshot;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -57,15 +60,23 @@ public final class RecordingStorageManager implements AutoCloseable {
     private Recording load(RecordingMetadata metadata) throws IOException {
         Path path = resolveRecordingPath(metadata);
         Recording recording;
-        if (metadata.formatVersion() == FORMAT_VERSION) {
-            recording = RecordingIndexedFile.read(path);
-        } else if (metadata.formatVersion() == LEGACY_FORMAT_VERSION) {
-            recording = legacyCodec.decode(Files.readAllBytes(path));
-        } else {
-            throw new IOException("unsupported stored recording format version: " + metadata.formatVersion());
-        }
+        if (metadata.formatVersion() == FORMAT_VERSION) recording = RecordingIndexedFile.read(path);
+        else if (metadata.formatVersion() == LEGACY_FORMAT_VERSION) recording = legacyCodec.decode(Files.readAllBytes(path));
+        else throw new IOException("unsupported stored recording format version: " + metadata.formatVersion());
         validateMetadata(metadata, recording);
         return recording;
+    }
+
+    /** Creates a reusable disk-backed source for actor instances without copying the recording. */
+    public ActorPlaybackSource createPlaybackSource(String name) throws IOException {
+        return createPlaybackSource(name, IndexedActorPlaybackSource.DEFAULT_CACHE_CAPACITY);
+    }
+
+    /** Creates a cached indexed source; frame count comes from SQLite metadata, not a full decode. */
+    public ActorPlaybackSource createPlaybackSource(String name, int cacheCapacity) throws IOException {
+        RecordingMetadata metadata = findMetadata(name).orElseThrow(() -> new IOException("recording not found: " + name));
+        if (metadata.formatVersion() != FORMAT_VERSION) throw new IOException("indexed playback requires recording format version " + FORMAT_VERSION);
+        return new IndexedActorPlaybackSource(resolveRecordingPath(metadata), metadata.frameCount(), cacheCapacity);
     }
 
     /** Fast random-access frame lookup from the indexed file without loading the full recording. */
@@ -82,8 +93,7 @@ public final class RecordingStorageManager implements AutoCloseable {
         String normalized = normalize(recording.name()); String fileName = fileNameFor(normalized);
         Path target = recordingsDirectory.resolve(fileName); Path temp = recordingsDirectory.resolve(fileName + ".tmp");
         try {
-            RecordingIndexedFile.write(temp, recording);
-            moveAtomically(temp, target);
+            RecordingIndexedFile.write(temp, recording); moveAtomically(temp, target);
             long now = Instant.now().toEpochMilli();
             try (Connection c = open(); PreparedStatement ps = c.prepareStatement("INSERT INTO recordings(name,file_name,format_version,duration_ticks,frame_count,size_bytes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET file_name=excluded.file_name,format_version=excluded.format_version,duration_ticks=excluded.duration_ticks,frame_count=excluded.frame_count,size_bytes=excluded.size_bytes,updated_at=excluded.updated_at")) {
                 Optional<RecordingMetadata> old = findMetadata(normalized, c);
@@ -133,5 +143,5 @@ public final class RecordingStorageManager implements AutoCloseable {
     private static RuntimeException failure(String message, Exception e) { return new IllegalStateException(message, e); }
     @Override public void close() { }
     public record RecordingMetadata(String name, String fileName, int formatVersion, long durationTicks, int frameCount, long sizeBytes, long createdAt, long updatedAt) { }
-    public record TickLookup(String recordingName, int frameIndex, com.ultraop.aurareplay.recording.snapshot.TickSnapshot frame) { }
+    public record TickLookup(String recordingName, int frameIndex, TickSnapshot frame) { }
 }
