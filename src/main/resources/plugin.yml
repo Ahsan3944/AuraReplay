@@ -18,5 +18,11 @@ permissions:
     default: op
   aurareplay.edit:
     default: op
+  aurareplay.actor:
+    default: op
+  aurareplay.camera:
+    default: op
+  aurareplay.scene:
+    default: op
   aurareplay.admin:
     default: op
