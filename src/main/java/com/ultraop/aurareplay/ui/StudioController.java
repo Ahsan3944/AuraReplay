@@ -41,7 +41,7 @@ public final class StudioController {
         }
         if(slot==26){
             switch(s.page()){
-                case ACTOR,TRANSFORM,MOTION-> {s.pageActor();renderActor(p,selectedActor(s));}
+                case ACTOR,TRANSFORM,MOTION,IDENTITY,EQUIPMENT-> {s.pageActor();renderActor(p,selectedActor(s));}
                 case ACTORS-> {s.root();renderRoot(p);}
                 default-> {s.root();renderRoot(p);}
             }return;
@@ -52,18 +52,29 @@ public final class StudioController {
         }
         ActorDefinition a=selectedActor(s);
         if(a==null){s.actors();renderActors(p);return;}
-        if(s.page()==StudioSession.Page.ACTOR){
-            switch(slot){case 10-> {s.transform();renderTransform(p,a);}case 11->{tools.toggleActorVisibility(a.id());renderActor(p,a);}case 12->{s.motion();renderMotion(p,a);}case 13->p.sendMessage(ChatColor.GRAY+"Identity editor is next.");case 14->p.sendMessage(ChatColor.GRAY+"Equipment editor is next.");default->{} }return;
+        switch(s.page()){
+            case ACTOR -> actorClick(p,s,a,slot);
+            case TRANSFORM -> transformClick(p,a,slot);
+            case MOTION -> motionClick(p,a,slot);
+            case IDENTITY -> identityClick(p,a,slot);
+            case EQUIPMENT -> equipmentClick(p,a,slot);
+            default -> { }
         }
-        if(s.page()==StudioSession.Page.TRANSFORM){transformClick(p,a,slot);return;}
-        if(s.page()==StudioSession.Page.MOTION){motionClick(p,a,slot);return;}
-        if("Transform".equals(s.category())){s.actors();renderActors(p);return;}
-        if("Playback".equals(s.category())){
-            if(slot==11){if(tools.startRecording(p))p.sendMessage(ChatColor.GREEN+"Recording started.");else p.sendMessage(ChatColor.YELLOW+"A recording is already active.");}
-            else if(slot==12){String n="capture-"+System.currentTimeMillis();if(tools.stopRecording(n))p.sendMessage(ChatColor.GREEN+"Recording saved: "+n);else p.sendMessage(ChatColor.YELLOW+"No recording is active.");}
-        }else if("Camera".equals(s.category())&&slot==11)p.sendMessage(ChatColor.GRAY+"Registered cameras: "+tools.cameraCount());
+        if(s.page()==StudioSession.Page.CATEGORY && "Transform".equals(s.category())){s.actors();renderActors(p);}
+        else if(s.page()==StudioSession.Page.CATEGORY && "Playback".equals(s.category())) playbackClick(p,slot);
+        else if(s.page()==StudioSession.Page.CATEGORY && "Camera".equals(s.category()) && slot==11) p.sendMessage(ChatColor.GRAY+"Registered cameras: "+tools.cameraCount());
     }
 
+    private void actorClick(Player p,StudioSession s,ActorDefinition a,int slot){
+        switch(slot){
+            case 10->{s.transform();renderTransform(p,a);}
+            case 11->{tools.toggleActorVisibility(a.id());renderActor(p,a);}
+            case 12->{s.motion();renderMotion(p,a);}
+            case 13->{s.identity();renderIdentity(p,a);}
+            case 14->{s.equipment();renderEquipment(p,a);}
+            default->{ }
+        }
+    }
     private void transformClick(Player p,ActorDefinition a,int slot){
         ActorTransform t=a.transform();ActorTransform n=switch(slot){
             case 0->t.withPosition(t.x()-POS_STEP,t.y(),t.z());case 1->t.withPosition(t.x()+POS_STEP,t.y(),t.z());
@@ -78,13 +89,27 @@ public final class StudioController {
     private void motionClick(Player p,ActorDefinition a,int slot){
         switch(slot){case 10->a.setPlaybackSpeed(Math.max(.1d,a.playbackSpeed()-.1d));case 11->a.setPlaybackSpeed(a.playbackSpeed()+.1d);case 13->a.setLoop(!a.loop());case 14->a.setStartDelayTicks(a.startDelayTicks()+10);case 15->a.setStartDelayTicks(Math.max(0,a.startDelayTicks()-10));case 16->a.setReverse(!a.reverse());default->{return;}}renderMotion(p,a);
     }
+    private void identityClick(Player p,ActorDefinition a,int slot){
+        switch(slot){case 10->a.setNameVisible(!a.nameVisible());case 11->a.setNameHeightOffset(a.nameHeightOffset()+.1d);case 12->a.setNameHeightOffset(a.nameHeightOffset()-.1d);default->{return;}}renderIdentity(p,a);
+    }
+    private void equipmentClick(Player p,ActorDefinition a,int slot){
+        if(slot==10)p.sendMessage(ChatColor.GRAY+"Equipment state is recording-driven. Slot override tracks will attach here.");
+        else if(slot==11)p.sendMessage(ChatColor.GRAY+"Main-hand override track foundation is ready.");
+        else if(slot==12)p.sendMessage(ChatColor.GRAY+"Off-hand override track foundation is ready.");
+    }
+    private void playbackClick(Player p,int slot){
+        if(slot==11){if(tools.startRecording(p))p.sendMessage(ChatColor.GREEN+"Recording started.");else p.sendMessage(ChatColor.YELLOW+"A recording is already active.");}
+        else if(slot==12){String n="capture-"+System.currentTimeMillis();if(tools.stopRecording(n))p.sendMessage(ChatColor.GREEN+"Recording saved: "+n);else p.sendMessage(ChatColor.YELLOW+"No recording is active.");}
+    }
     private ActorDefinition selectedActor(StudioSession s){ActorId id=s.selectedActor();return id==null?null:engine.actorManager().get(id).orElse(null);}
 
     private void renderRoot(Player p){Inventory i=inv(TITLE);item(i,10,Material.PLAYER_HEAD,"Actors","Select and edit virtual actors");item(i,11,Material.COMPASS,"Transform","Position, rotation and scale");item(i,12,Material.LEATHER_BOOTS,"Motion","Playback and motion tools");item(i,13,Material.ARMOR_STAND,"Appearance","Identity, equipment and visuals");item(i,14,Material.SPYGLASS,"Camera","Cinematic camera controls");item(i,15,Material.FIREWORK_ROCKET,"Effects","Particles, sounds and cues");item(i,16,Material.GRASS_BLOCK,"World","World and environment controls");item(i,19,Material.CLOCK,"Playback","Record and take controls");item(i,20,Material.BOOK,"Project","Scenes, recordings and assets");item(i,21,Material.REDSTONE,"Settings","Studio and input settings");p.openInventory(i);}
     private void renderActors(Player p){Inventory i=inv(ChatColor.DARK_AQUA+"Studio / Actors");var a=engine.actorManager().all().stream().toList();for(int n=0;n<Math.min(26,a.size());n++){ActorDefinition x=a.get(n);item(i,n,Material.ARMOR_STAND,x.name(),"Select actor","ID: "+x.id());}item(i,26,Material.ARROW,"Back","Return to Studio");p.openInventory(i);}
-    private void renderActor(Player p,ActorDefinition a){if(a==null){safelyRoot(p);return;}Inventory i=inv(ChatColor.DARK_AQUA+"Studio / "+a.name());item(i,10,Material.COMPASS,"Transform",summary(a.transform()));item(i,11,a.visible()?Material.LANTERN:Material.REDSTONE_TORCH,a.visible()?"Hide Actor":"Show Actor","Toggle visibility");item(i,12,Material.LEATHER_BOOTS,"Motion","Speed: "+fmt(a.playbackSpeed()),"Delay: "+a.startDelayTicks()+" ticks","Loop: "+a.loop(),"Reverse: "+a.reverse());item(i,13,Material.NAME_TAG,"Identity","Name: "+a.name(),"Nametag: "+a.nameVisible());item(i,14,Material.ARMOR_STAND,"Equipment","Armor and held items");item(i,26,Material.ARROW,"Back","Return to actors");p.openInventory(i);}
+    private void renderActor(Player p,ActorDefinition a){if(a==null){safelyRoot(p);return;}Inventory i=inv(ChatColor.DARK_AQUA+"Studio / "+a.name());item(i,10,Material.COMPASS,"Transform",summary(a.transform()));item(i,11,a.visible()?Material.LANTERN:Material.REDSTONE_TORCH,a.visible()?"Hide Actor":"Show Actor","Toggle visibility");item(i,12,Material.LEATHER_BOOTS,"Motion","Speed: "+fmt(a.playbackSpeed()),"Delay: "+a.startDelayTicks()+" ticks","Loop: "+a.loop(),"Reverse: "+a.reverse());item(i,13,Material.NAME_TAG,"Identity","Name: "+a.name(),"Nametag: "+a.nameVisible(),"Height: "+fmt(a.nameHeightOffset()));item(i,14,Material.ARMOR_STAND,"Equipment","Armor and held items");item(i,26,Material.ARROW,"Back","Return to actors");p.openInventory(i);}
     private void renderTransform(Player p,ActorDefinition a){ActorTransform t=a.transform();Inventory i=inv(ChatColor.DARK_AQUA+"Transform / "+a.name());item(i,0,Material.REDSTONE,"X -","Current: "+fmt(t.x()),"Step: 0.10");item(i,1,Material.EMERALD,"X +","Current: "+fmt(t.x()),"Step: 0.10");item(i,3,Material.REDSTONE,"Y -","Current: "+fmt(t.y()),"Step: 0.10");item(i,4,Material.EMERALD,"Y +","Current: "+fmt(t.y()),"Step: 0.10");item(i,6,Material.REDSTONE,"Z -","Current: "+fmt(t.z()),"Step: 0.10");item(i,7,Material.EMERALD,"Z +","Current: "+fmt(t.z()),"Step: 0.10");item(i,9,Material.REDSTONE_TORCH,"Yaw -","Current: "+fmt(t.yaw())+"°","Step: 5°");item(i,10,Material.TORCH,"Yaw +","Current: "+fmt(t.yaw())+"°","Step: 5°");item(i,12,Material.REDSTONE_TORCH,"Pitch -","Current: "+fmt(t.pitch())+"°","Step: 5°");item(i,13,Material.TORCH,"Pitch +","Current: "+fmt(t.pitch())+"°","Step: 5°");item(i,15,Material.REDSTONE_TORCH,"Roll -","Current: "+fmt(t.roll())+"°","Step: 5°");item(i,16,Material.TORCH,"Roll +","Current: "+fmt(t.roll())+"°","Step: 5°");item(i,18,Material.REDSTONE,"Scale -","Current: "+fmt(t.scale()),"Step: 0.10");item(i,19,Material.EMERALD,"Scale +","Current: "+fmt(t.scale()),"Step: 0.10");item(i,22,Material.BOOK,"Current Transform",summary(t));item(i,26,Material.ARROW,"Back","Return to actor");p.openInventory(i);}
     private void renderMotion(Player p,ActorDefinition a){Inventory i=inv(ChatColor.DARK_AQUA+"Motion / "+a.name());item(i,10,Material.SPECTRAL_ARROW,"Speed -","Current: "+fmt(a.playbackSpeed()),"Step: 0.1");item(i,11,Material.ARROW,"Speed +","Current: "+fmt(a.playbackSpeed()),"Step: 0.1");item(i,13,Material.REPEATER,"Loop","Current: "+a.loop(),"Toggle loop playback");item(i,14,Material.CLOCK,"Delay +10","Current: "+a.startDelayTicks()+" ticks");item(i,15,Material.CLOCK,"Delay -10","Current: "+a.startDelayTicks()+" ticks");item(i,16,Material.CLOCK,"Reverse","Current: "+a.reverse(),"Toggle reverse playback");item(i,26,Material.ARROW,"Back","Return to actor");p.openInventory(i);}
+    private void renderIdentity(Player p,ActorDefinition a){Inventory i=inv(ChatColor.DARK_AQUA+"Identity / "+a.name());item(i,10,a.nameVisible()?Material.NAME_TAG:Material.BARRIER,a.nameVisible()?"Hide Nametag":"Show Nametag","Current: "+a.nameVisible());item(i,11,Material.ARROW,"Height +0.10","Current: "+fmt(a.nameHeightOffset()));item(i,12,Material.SPECTRAL_ARROW,"Height -0.10","Current: "+fmt(a.nameHeightOffset()));item(i,14,Material.PLAYER_HEAD,"Display Name","Current: "+a.name(),"Use command editor for exact text");item(i,15,Material.NAME_TAG,"Prefix","Current: "+a.namePrefix());item(i,16,Material.NAME_TAG,"Suffix","Current: "+a.nameSuffix());item(i,26,Material.ARROW,"Back","Return to actor");p.openInventory(i);}
+    private void renderEquipment(Player p,ActorDefinition a){Inventory i=inv(ChatColor.DARK_AQUA+"Equipment / "+a.name());item(i,10,Material.ARMOR_STAND,"Equipment State","Recording equipment is preserved","Keyframe override system attaches here");item(i,11,Material.DIAMOND_SWORD,"Main Hand","Recording-driven","Override track foundation");item(i,12,Material.SHIELD,"Off Hand","Recording-driven","Override track foundation");item(i,14,Material.NETHERITE_HELMET,"Helmet","Recording-driven","Override track foundation");item(i,15,Material.NETHERITE_CHESTPLATE,"Chestplate","Recording-driven","Override track foundation");item(i,16,Material.NETHERITE_LEGGINGS,"Leggings","Recording-driven","Override track foundation");item(i,17,Material.NETHERITE_BOOTS,"Boots","Recording-driven","Override track foundation");item(i,26,Material.ARROW,"Back","Return to actor");p.openInventory(i);}
     private void renderCategory(Player p,String c){Inventory i=inv(ChatColor.DARK_AQUA+"Studio / "+c);if("Playback".equals(c)){item(i,11,Material.RED_DYE,"Record","Start recording");item(i,12,Material.LIME_DYE,"Stop & Save","Save current recording");}else if("Camera".equals(c))item(i,11,Material.SPYGLASS,"Camera Status","Show registered cameras");else if("Transform".equals(c))item(i,13,Material.PLAYER_HEAD,"Select Actor","Choose an actor to transform");else item(i,13,Material.BOOK,"Tool","Category foundation; shared services are used");item(i,26,Material.ARROW,"Back","Return to Studio");p.openInventory(i);}
     private static String[] summary(ActorTransform t){return new String[]{"X "+fmt(t.x())+"  Y "+fmt(t.y())+"  Z "+fmt(t.z()),"Yaw "+fmt(t.yaw())+"  Pitch "+fmt(t.pitch())+"  Roll "+fmt(t.roll()),"Scale "+fmt(t.scale())};}
     private static String fmt(double v){return String.format(java.util.Locale.ROOT,"%.2f",v);}private static String fmt(float v){return String.format(java.util.Locale.ROOT,"%.1f",v);}
