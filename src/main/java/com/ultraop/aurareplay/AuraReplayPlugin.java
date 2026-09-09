@@ -14,8 +14,8 @@ import com.ultraop.aurareplay.ui.SceneStudioListener;
 import com.ultraop.aurareplay.ui.StudioCommand;
 import com.ultraop.aurareplay.ui.StudioListener;
 import org.bukkit.Bukkit;
-import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -41,7 +41,10 @@ public final class AuraReplayPlugin extends JavaPlugin {
             engine.actorManager().removeUsingRecording(name);
         }));
 
-        engine.recordingManager().loadAllAsync().join(); actorStorage.loadInto(engine.actorManager(),engine.recordingManager()); projectStorage.loadInto(engine.sceneManager(),engine.cameraManager());
+        engine.recordingManager().loadAllAsync().join();
+        actorStorage.loadInto(engine.actorManager(),engine.recordingManager());
+        projectStorage.loadInto(engine.sceneManager(),engine.cameraManager());
+        engine.sceneManager().reconcileActorReferences();
         engine.start(); persistenceTask=Bukkit.getScheduler().runTaskTimer(this,this::persistProjectAsync,100L,100L);
         PersistentAuraReplayCommand command=new PersistentAuraReplayCommand(engine); if(getCommand("aurareplay")!=null){getCommand("aurareplay").setExecutor(command);getCommand("aurareplay").setTabCompleter(command);} if(getCommand("arstudio")!=null)getCommand("arstudio").setExecutor(new StudioCommand(engine));
         ActorSourceBrowser sourceBrowser=new ActorSourceBrowser(engine); getServer().getPluginManager().registerEvents(new StudioListener(engine.studioController(),sourceBrowser),this); getServer().getPluginManager().registerEvents(new SceneStudioListener(engine),this); getServer().getPluginManager().registerEvents(new ActorSourceBrowserListener(sourceBrowser,engine),this); getServer().getPluginManager().registerEvents(new PlaybackLifecycleListener(engine),this);
