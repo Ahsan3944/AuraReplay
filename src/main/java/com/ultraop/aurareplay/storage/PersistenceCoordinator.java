@@ -3,9 +3,13 @@ package com.ultraop.aurareplay.storage;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
@@ -14,20 +18,42 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-/**
- * Crash-consistent writer for the editable AuraReplay project state.
- * A captured project and actor snapshot is committed in one SQLite transaction.
- */
+/** Crash-consistent writer with generation checkpoints and a last-known-good SQLite backup. */
 public final class PersistenceCoordinator implements AutoCloseable {
-    private final java.io.File databaseFile;
+    private final File databaseFile;
+    private final Path backupFile;
     private final Executor executor;
 
     public PersistenceCoordinator(JavaPlugin plugin, Executor executor) {
         Objects.requireNonNull(plugin, "plugin");
         this.executor = Objects.requireNonNull(executor, "executor");
-        java.io.File directory = plugin.getDataFolder();
+        File directory = plugin.getDataFolder();
         if (!directory.exists() && !directory.mkdirs()) throw new IllegalStateException("Could not create plugin data directory");
-        databaseFile = new java.io.File(directory, "aurareplay.db");
+        databaseFile = new File(directory, "aurareplay.db");
+        backupFile = databaseFile.toPath().resolveSibling("aurareplay.db.backup");
+    }
+
+    /** Validates the latest committed generation and restores the previous good database when it is inconsistent. */
+    public void recoverIfNeeded() {
+        try {
+            if (validateCheckpoint()) return;
+        } catch (RuntimeException ignored) {
+            // Fall through to backup recovery.
+        }
+        if (!Files.isRegularFile(backupFile)) return;
+        try {
+            Path temp = databaseFile.toPath().resolveSibling("aurareplay.db.recovery.tmp");
+            Files.copy(backupFile, temp, StandardCopyOption.REPLACE_EXISTING);
+            try (Connection c = open(temp)) {
+                if (!validateCheckpoint(c)) throw new IllegalStateException("backup checkpoint is invalid");
+            }
+            Files.move(temp, databaseFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception e) {
+            try {
+                Files.deleteIfExists(databaseFile.toPath().resolveSibling("aurareplay.db.recovery.tmp"));
+            } catch (Exception ignored) { }
+            throw new IllegalStateException("AuraReplay persistence is corrupt and the last-known-good backup could not be restored", e);
+        }
     }
 
     public CompletableFuture<Void> saveAsync(ProjectStorage.ProjectSnapshot project, List<ActorStorage.ActorSnapshot> actors) {
@@ -37,15 +63,17 @@ public final class PersistenceCoordinator implements AutoCloseable {
     public void save(ProjectStorage.ProjectSnapshot project, List<ActorStorage.ActorSnapshot> actors) {
         Objects.requireNonNull(project, "project");
         Objects.requireNonNull(actors, "actors");
-        try (Connection c = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+        try (Connection c = open()) {
             c.setAutoCommit(false);
             try {
                 c.createStatement().executeUpdate("PRAGMA foreign_keys = ON");
                 ensureSchema(c);
+                long generation = nextGeneration(c);
                 clear(c);
                 insertActors(c, actors);
                 insertCameras(c, project.cameras());
                 insertScenes(c, project.scenes());
+                writeCheckpoint(c, generation, actors.size(), project.cameras().size(), project.scenes().size());
                 c.commit();
             } catch (SQLException e) {
                 c.rollback();
@@ -55,6 +83,67 @@ public final class PersistenceCoordinator implements AutoCloseable {
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Could not commit AuraReplay persistence snapshot", e);
+        }
+        createBackupBestEffort();
+    }
+
+    private long nextGeneration(Connection c) throws SQLException {
+        try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery("SELECT COALESCE(MAX(generation),0)+1 FROM persistence_checkpoint")) {
+            return rs.next() ? rs.getLong(1) : 1L;
+        }
+    }
+
+    private static void writeCheckpoint(Connection c, long generation, int actorCount, int cameraCount, int sceneCount) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement("INSERT INTO persistence_checkpoint(generation,committed_at,actor_count,camera_count,scene_count) VALUES(?,?,?,?,?)")) {
+            ps.setLong(1, generation);
+            ps.setLong(2, System.currentTimeMillis());
+            ps.setInt(3, actorCount);
+            ps.setInt(4, cameraCount);
+            ps.setInt(5, sceneCount);
+            ps.executeUpdate();
+        }
+        try (Statement s = c.createStatement()) {
+            s.executeUpdate("DELETE FROM persistence_checkpoint WHERE generation NOT IN (SELECT MAX(generation) FROM persistence_checkpoint)");
+        }
+    }
+
+    private boolean validateCheckpoint() throws SQLException {
+        try (Connection c = open()) {
+            return validateCheckpoint(c);
+        }
+    }
+
+    private static boolean validateCheckpoint(Connection c) throws SQLException {
+        ensureSchema(c);
+        try (Statement s = c.createStatement(); ResultSet checkpoint = s.executeQuery("SELECT actor_count,camera_count,scene_count FROM persistence_checkpoint ORDER BY generation DESC LIMIT 1")) {
+            if (!checkpoint.next()) return false;
+            int actors = count(c, "actors");
+            int cameras = count(c, "cameras");
+            int scenes = count(c, "scenes");
+            return actors == checkpoint.getInt(1) && cameras == checkpoint.getInt(2) && scenes == checkpoint.getInt(3);
+        }
+    }
+
+    private static int count(Connection c, String table) throws SQLException {
+        try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM " + table)) {
+            return rs.next() ? rs.getInt(1) : 0;
+        }
+    }
+
+    private void createBackupBestEffort() {
+        Path temp = backupFile.resolveSibling(backupFile.getFileName() + ".tmp");
+        try {
+            Files.deleteIfExists(temp);
+            Files.deleteIfExists(backupFile);
+            try (Connection c = open()) {
+                try (Statement s = c.createStatement()) {
+                    String escaped = temp.toAbsolutePath().toString().replace("'", "''");
+                    s.executeUpdate("VACUUM INTO '" + escaped + "'");
+                }
+            }
+            Files.move(temp, backupFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception ignored) {
+            try { Files.deleteIfExists(temp); } catch (Exception ignoredAgain) { }
         }
     }
 
@@ -67,6 +156,7 @@ public final class PersistenceCoordinator implements AutoCloseable {
             s.executeUpdate("CREATE TABLE IF NOT EXISTS scene_actors (scene_name TEXT NOT NULL, actor_id TEXT NOT NULL, ordinal INTEGER NOT NULL, PRIMARY KEY(scene_name, actor_id), FOREIGN KEY(scene_name) REFERENCES scenes(name) ON DELETE CASCADE)");
             s.executeUpdate("CREATE TABLE IF NOT EXISTS scene_markers (scene_name TEXT NOT NULL, id TEXT NOT NULL, tick INTEGER NOT NULL, label TEXT NOT NULL, PRIMARY KEY(scene_name, id), FOREIGN KEY(scene_name) REFERENCES scenes(name) ON DELETE CASCADE)");
             s.executeUpdate("CREATE TABLE IF NOT EXISTS scene_keyframes (scene_name TEXT NOT NULL, tick INTEGER NOT NULL, channel TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(scene_name, tick, channel), FOREIGN KEY(scene_name) REFERENCES scenes(name) ON DELETE CASCADE)");
+            s.executeUpdate("CREATE TABLE IF NOT EXISTS persistence_checkpoint (generation INTEGER PRIMARY KEY, committed_at INTEGER NOT NULL, actor_count INTEGER NOT NULL, camera_count INTEGER NOT NULL, scene_count INTEGER NOT NULL)");
         }
     }
 
@@ -112,5 +202,7 @@ public final class PersistenceCoordinator implements AutoCloseable {
     }
 
     private static void bindTransform(PreparedStatement ps,int i,com.ultraop.aurareplay.camera.CameraTransform t)throws SQLException{ps.setDouble(i,t.x());ps.setDouble(i+1,t.y());ps.setDouble(i+2,t.z());ps.setFloat(i+3,t.yaw());ps.setFloat(i+4,t.pitch());ps.setFloat(i+5,t.roll());ps.setFloat(i+6,t.fov());}
+    private Connection open() throws SQLException { return DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath()); }
+    private static Connection open(Path file) throws SQLException { return DriverManager.getConnection("jdbc:sqlite:" + file.toAbsolutePath()); }
     @Override public void close() { }
 }
