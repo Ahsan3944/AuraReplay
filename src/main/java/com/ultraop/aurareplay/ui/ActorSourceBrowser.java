@@ -26,11 +26,13 @@ public final class ActorSourceBrowser {
 
     public void openRecordings(Player player) {
         Inventory inventory = new Holder().inventory(27, PREFIX);
-        List<Recording> recordings = engine.recordingManager().all().stream().sorted((a, b) -> a.name().compareToIgnoreCase(b.name())).toList();
+        List<Recording> recordings = engine.recordingManager().all().stream()
+                .sorted((a, b) -> a.name().compareToIgnoreCase(b.name())).toList();
         for (int i = 0; i < Math.min(26, recordings.size()); i++) {
             Recording recording = recordings.get(i);
             inventory.setItem(i, item(Material.PAPER, ChatColor.AQUA + recording.name(),
-                    ChatColor.GRAY + recording.frames().size() + " frames", ChatColor.GRAY + recording.durationTicks() + " ticks"));
+                    ChatColor.GRAY + String.valueOf(recording.frames().size()) + " frames",
+                    ChatColor.GRAY + String.valueOf(recording.durationTicks()) + " ticks"));
         }
         inventory.setItem(26, item(Material.BARRIER, ChatColor.RED + "Close"));
         player.openInventory(inventory);
