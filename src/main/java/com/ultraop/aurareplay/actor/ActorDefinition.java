@@ -1,0 +1,55 @@
+package com.ultraop.aurareplay.actor;
+
+import com.ultraop.aurareplay.recording.Recording;
+
+import java.util.Objects;
+
+public final class ActorDefinition {
+    private final ActorId id;
+    private final Recording recording;
+    private String name;
+    private double nameHeightOffset;
+    private boolean nameVisible;
+    private boolean visible = true;
+    private boolean frozen;
+    private double playbackSpeed = 1.0d;
+    private long startDelayTicks;
+    private boolean loop;
+    private boolean reverse;
+    private ActorTransform transform;
+
+    public ActorDefinition(ActorId id, Recording recording, ActorTransform transform) {
+        this.id = Objects.requireNonNull(id);
+        this.recording = Objects.requireNonNull(recording);
+        this.transform = Objects.requireNonNull(transform);
+        this.name = recording.name();
+        this.nameVisible = true;
+    }
+
+    public ActorId id() { return id; }
+    public Recording recording() { return recording; }
+    public String name() { return name; }
+    public double nameHeightOffset() { return nameHeightOffset; }
+    public boolean nameVisible() { return nameVisible; }
+    public boolean visible() { return visible; }
+    public boolean frozen() { return frozen; }
+    public double playbackSpeed() { return playbackSpeed; }
+    public long startDelayTicks() { return startDelayTicks; }
+    public boolean loop() { return loop; }
+    public boolean reverse() { return reverse; }
+    public ActorTransform transform() { return transform; }
+
+    public void setName(String name) { this.name = Objects.requireNonNull(name); }
+    public void setNameHeightOffset(double offset) { this.nameHeightOffset = offset; }
+    public void setNameVisible(boolean visible) { this.nameVisible = visible; }
+    public void setVisible(boolean visible) { this.visible = visible; }
+    public void setFrozen(boolean frozen) { this.frozen = frozen; }
+    public void setPlaybackSpeed(double speed) {
+        if (speed <= 0.0d) throw new IllegalArgumentException("playback speed must be > 0");
+        this.playbackSpeed = speed;
+    }
+    public void setStartDelayTicks(long ticks) { this.startDelayTicks = Math.max(0, ticks); }
+    public void setLoop(boolean loop) { this.loop = loop; }
+    public void setReverse(boolean reverse) { this.reverse = reverse; }
+    public void setTransform(ActorTransform transform) { this.transform = Objects.requireNonNull(transform); }
+}
