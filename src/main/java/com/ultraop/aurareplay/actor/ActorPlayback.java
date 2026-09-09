@@ -10,13 +10,39 @@ import java.util.UUID;
 public final class ActorPlayback {
     private final ActorDefinition actor;
     private final PlaybackCursor cursor = new PlaybackCursor();
+    private long elapsedTicks;
 
     public ActorPlayback(ActorDefinition actor) {
         this.actor = Objects.requireNonNull(actor);
+        if (actor.reverse() && actor.recording().durationTicks() > 0) {
+            cursor.setPosition(actor.recording().durationTicks() - 1.0d);
+        }
     }
 
     public ActorDefinition actor() { return actor; }
     public PlaybackCursor cursor() { return cursor; }
+    public long elapsedTicks() { return elapsedTicks; }
+
+    public void tick() {
+        elapsedTicks++;
+        if (actor.frozen() || elapsedTicks <= actor.startDelayTicks()) return;
+        cursor.advance(
+                1.0d,
+                actor.playbackSpeed(),
+                actor.reverse(),
+                actor.recording().durationTicks(),
+                actor.loop()
+        );
+    }
+
+    public void reset() {
+        elapsedTicks = 0L;
+        if (actor.reverse() && actor.recording().durationTicks() > 0) {
+            cursor.setPosition(actor.recording().durationTicks() - 1.0d);
+        } else {
+            cursor.reset();
+        }
+    }
 
     public EntitySnapshot sample() {
         ActorSample sample = sampleState();
