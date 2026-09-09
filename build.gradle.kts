@@ -18,6 +18,7 @@ dependencies {
     compileOnly("net.dmulloy2:ProtocolLib:5.4.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.13.4")
 }
 
 java {
