@@ -12,9 +12,12 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 public final class StudioListener implements Listener {
     private final StudioController controller;
     private final ActorSourceBrowser sourceBrowser;
+    private final MotionStudioService motionStudio;
+
     public StudioListener(StudioController controller, ActorSourceBrowser sourceBrowser) {
         this.controller = controller;
         this.sourceBrowser = sourceBrowser;
+        this.motionStudio = new MotionStudioService(controller);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -24,20 +27,29 @@ public final class StudioListener implements Listener {
         event.setCancelled(true);
         if (event.getClickedInventory() != event.getView().getTopInventory()) return;
 
-        // The Actors root entry is the source browser entry point. Existing actor
-        // editing remains available through the actor command layer while the Studio
-        // source workflow is being migrated into the unified actor editor.
         if (event.getRawSlot() == 10 && event.getView().getTitle().contains("AuraReplay Studio")) {
             sourceBrowser.openRecordings(player);
             return;
         }
+
+        StudioSession session = controller.session(player);
+        if (session != null && session.page() == StudioSession.Page.MOTION) {
+            motionStudio.click(player, event.getRawSlot());
+            return;
+        }
+
         controller.click(player, event.getRawSlot());
+        session = controller.session(player);
+        if (session != null && session.page() == StudioSession.Page.MOTION) {
+            motionStudio.open(player);
+        }
     }
 
     @EventHandler
     public void onClose(InventoryCloseEvent event) {
         if (!(event.getPlayer() instanceof Player player)) return;
         if (!controller.isStudioInventory(event.getInventory())) return;
+        motionStudio.close(player);
         Bukkit.getScheduler().runTask(controllerPlugin(player), () -> {
             if (!player.isOnline()) {
                 controller.close(player);
