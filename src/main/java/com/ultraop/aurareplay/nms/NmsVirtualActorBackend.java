@@ -1,7 +1,9 @@
 package com.ultraop.aurareplay.nms;
 
+import com.google.common.collect.ImmutableListMultimap;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
+import com.mojang.authlib.properties.PropertyMap;
 import com.mojang.datafixers.util.Pair;
 import com.ultraop.aurareplay.actor.ActorDefinition;
 import com.ultraop.aurareplay.actor.ActorTransform;
@@ -23,7 +25,6 @@ import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerEntity;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.network.ServerPlayerConnection;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -66,9 +67,8 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
 
         UUID fakeUuid = UUID.nameUUIDFromBytes(
                 ("AuraReplay:" + viewer.getUniqueId() + ":" + actor.id()).getBytes(StandardCharsets.UTF_8));
-        GameProfile profile = new GameProfile(fakeUuid, profileName(
-                identity == null ? actor.name() : identity.profileName()));
-        applySkin(profile, identity);
+        GameProfile profile = createProfile(fakeUuid, profileName(
+                identity == null ? actor.name() : identity.profileName()), identity);
 
         ServerPlayer npc = new ServerPlayer(server, level, profile, ClientInformation.createDefault());
         ActorTransform transform = actor.transform();
@@ -272,14 +272,18 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         return null;
     }
 
-    private static void applySkin(GameProfile profile, EntityIdentitySnapshot identity) {
-        if (identity == null || identity.skinTextureValue() == null || identity.skinTextureValue().isBlank()) return;
-        if (identity.skinTextureSignature() == null || identity.skinTextureSignature().isBlank()) {
-            profile.getProperties().put("textures", new Property("textures", identity.skinTextureValue()));
-        } else {
-            profile.getProperties().put("textures", new Property(
-                    "textures", identity.skinTextureValue(), identity.skinTextureSignature()));
+    private static GameProfile createProfile(UUID uuid, String name, EntityIdentitySnapshot identity) {
+        if (identity == null || identity.skinTextureValue() == null || identity.skinTextureValue().isBlank()) {
+            return new GameProfile(uuid, name);
         }
+        Property property;
+        if (identity.skinTextureSignature() == null || identity.skinTextureSignature().isBlank()) {
+            property = new Property("textures", identity.skinTextureValue());
+        } else {
+            property = new Property("textures", identity.skinTextureValue(), identity.skinTextureSignature());
+        }
+        PropertyMap properties = new PropertyMap(ImmutableListMultimap.of("textures", property));
+        return new GameProfile(uuid, name, properties);
     }
 
     private static String profileName(String name) {
