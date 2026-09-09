@@ -65,6 +65,7 @@ public final class RecordingBinaryCodec {
     }
 
     public Recording decode(byte[] bytes) throws IOException {
+        Objects.requireNonNull(bytes, "bytes");
         try (DataInputStream in = new DataInputStream(new GZIPInputStream(new ByteArrayInputStream(bytes)))) {
             if (in.readInt() != MAGIC) throw new IOException("invalid AuraReplay recording header");
             int version = in.readInt();
@@ -96,6 +97,9 @@ public final class RecordingBinaryCodec {
                 frames.add(new TickSnapshot(tick, entities, actions));
                 previous = current;
             }
+
+            // Force GZIPInputStream to consume the trailer so CRC/size corruption is detected.
+            if (in.read() != -1) throw new IOException("trailing data after AuraReplay recording");
             return new Recording(name, duration, frames);
         }
     }
