@@ -1,5 +1,6 @@
 package com.ultraop.aurareplay.ui;
 
+import com.ultraop.aurareplay.AuraReplayPlugin;
 import com.ultraop.aurareplay.actor.ActorDefinition;
 import com.ultraop.aurareplay.actor.ActorId;
 import com.ultraop.aurareplay.motion.MotionLayer;
@@ -35,38 +36,30 @@ public final class MotionStudioService {
     public void click(Player player, int slot) {
         ActorDefinition actor = actor(player);
         if (actor == null) { controller.click(player, 26); return; }
+        MotionStack stack = actor.motionStack();
         String selected = selectedLayers.get(player.getUniqueId());
         if (selected == null) {
             if (slot == 26) { controller.click(player, 26); return; }
-            if (slot >= 0 && slot < actor.motionStack().size()) {
-                MotionLayer layer = actor.motionStack().layers().get(slot);
+            if (slot >= 0 && slot < stack.size()) {
+                MotionLayer layer = stack.layers().get(slot);
                 selectedLayers.put(player.getUniqueId(), layer.id());
                 renderEditor(player, actor, layer);
-                return;
+            } else if (slot >= 18 && slot <= 25) {
+                addLayer(player, actor, typeForSlot(slot));
             }
-            if (slot >= 18 && slot <= 25) { addLayer(player, actor, typeForSlot(slot)); }
             return;
         }
-
-        MotionStack stack = actor.motionStack();
         MotionLayer layer = find(stack, selected);
         if (layer == null) { selectedLayers.remove(player.getUniqueId()); renderLayers(player, actor); return; }
         if (slot == 26) { selectedLayers.remove(player.getUniqueId()); renderLayers(player, actor); return; }
         if (slot == 20) stack.setEnabled(layer.id(), !layer.enabled());
-        else if (slot == 21) {
-            stack.remove(layer.id());
-            selectedLayers.remove(player.getUniqueId());
-            player.sendMessage(ChatColor.YELLOW + "Removed motion layer: " + layer.id());
-            renderLayers(player, actor);
-            return;
-        } else if (slot == 22) move(stack, layer.id(), -1);
+        else if (slot == 21) { stack.remove(layer.id()); selectedLayers.remove(player.getUniqueId()); renderLayers(player, actor); return; }
+        else if (slot == 22) move(stack, layer.id(), -1);
         else if (slot == 23) move(stack, layer.id(), 1);
-        else if (slot == 24) stack.replace(adjust(layer, false));
-        else if (slot == 25) stack.replace(adjust(layer, true));
-        else if (slot == 10) stack.replace(adjustRange(layer, -5, 0));
-        else if (slot == 11) stack.replace(adjustRange(layer, 5, 0));
-        else if (slot == 12) stack.replace(adjustRange(layer, 0, -5));
-        else if (slot == 13) stack.replace(adjustRange(layer, 0, 5));
+        else if (slot == 10) stack.replace(copy(layer, Math.max(0, layer.startTick() - 5), layer.endTick(), layer));
+        else if (slot == 11) stack.replace(copy(layer, layer.startTick() + 5, Math.max(layer.startTick() + 5, layer.endTick()), layer));
+        else if (slot == 12) stack.replace(copy(layer, layer.startTick(), Math.max(layer.startTick(), layer.endTick() - 5), layer));
+        else if (slot == 13) stack.replace(copy(layer, layer.startTick(), layer.endTick() + 5, layer));
         else if (slot == 14) stack.replace(adjustComponent(layer, -1));
         else if (slot == 15) stack.replace(adjustComponent(layer, 1));
         else if (slot == 16) stack.replace(adjustValue(layer, -1));
@@ -80,7 +73,7 @@ public final class MotionStudioService {
 
     private void addLayer(Player player, ActorDefinition actor, MotionLayer.Type type) {
         String id = uniqueId(actor.motionStack(), type.name().toLowerCase());
-        long end = Math.max(20L, actor.recording().frameCount() - 1L);
+        long end = Math.max(20L, actor.recording().frames().size() - 1L);
         MotionLayer layer = switch (type) {
             case POSITION_OFFSET -> MotionLayer.positionOffset(id, 0, 0, 0, 0, end);
             case ROTATION_OFFSET -> MotionLayer.rotationOffset(id, 0, 0, 0, 0, end);
@@ -129,14 +122,9 @@ public final class MotionStudioService {
 
     private static void move(MotionStack stack, String id, int delta) {
         int index = -1;
-        for (int i = 0; i < stack.layers().size(); i++) if (stack.layers().get(i).id().equals(id)) index = i;
+        var layers = stack.layers();
+        for (int i = 0; i < layers.size(); i++) if (layers.get(i).id().equals(id)) index = i;
         if (index >= 0) stack.move(id, Math.max(0, Math.min(stack.size() - 1, index + delta)));
-    }
-
-    private static MotionLayer adjustRange(MotionLayer l, long startDelta, long endDelta) {
-        long start = Math.max(0, l.startTick() + startDelta);
-        long end = Math.max(start, l.endTick() + endDelta);
-        return copy(l, start, end, l.x(), l.y(), l.z(), l.yaw(), l.pitch(), l.roll(), l.value());
     }
 
     private static MotionLayer adjustComponent(MotionLayer l, double delta) {
@@ -156,10 +144,12 @@ public final class MotionStudioService {
         return copy(l, l.startTick(), l.endTick(), l.x(), l.y(), l.z(), l.yaw(), l.pitch(), l.roll(), value);
     }
 
-    private static MotionLayer adjust(MotionLayer l, boolean positive) { return adjustValue(l, positive ? 1 : -1); }
-
     private static MotionLayer copy(MotionLayer l, long start, long end, double x, double y, double z, float yaw, float pitch, float roll, double value) {
         return new MotionLayer(l.id(), l.type(), x, y, z, yaw, pitch, roll, value, start, end, l.enabled());
+    }
+
+    private static MotionLayer copy(MotionLayer l, long start, long end, MotionLayer source) {
+        return copy(source, start, end, source.x(), source.y(), source.z(), source.yaw(), source.pitch(), source.roll(), source.value());
     }
 
     private void renderLayers(Player player, ActorDefinition actor) {
@@ -202,7 +192,8 @@ public final class MotionStudioService {
     }
 
     private static int index(MotionStack stack, String id) {
-        for (int i = 0; i < stack.layers().size(); i++) if (stack.layers().get(i).id().equals(id)) return i + 1;
+        var layers = stack.layers();
+        for (int i = 0; i < layers.size(); i++) if (layers.get(i).id().equals(id)) return i + 1;
         return -1;
     }
 
@@ -218,7 +209,8 @@ public final class MotionStudioService {
         StudioSession session = controller.session(player);
         if (session == null) return null;
         ActorId id = session.selectedActor();
-        return id == null ? null : controller.engine().actorManager().get(id).orElse(null);
+        if (id == null) return null;
+        return AuraReplayPlugin.getPlugin(AuraReplayPlugin.class).engine().actorManager().get(id).orElse(null);
     }
 
     private static Inventory inventory(String title) { return Bukkit.createInventory(new Holder(), 27, title); }
