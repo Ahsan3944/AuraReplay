@@ -47,6 +47,10 @@ public final class AuraReplayPlugin extends JavaPlugin {
         actorStorage.loadInto(engine.actorManager(),engine.recordingManager());
         projectStorage.loadInto(engine.sceneManager(),engine.cameraManager());
         engine.sceneManager().reconcileActorReferences();
+        recordingStorage.validateStoredRecordingsAsync().thenAccept(results -> {
+            long invalid=results.stream().filter(result->!result.valid()).count();
+            if(invalid>0) getLogger().warning("Recording integrity scan quarantined "+invalid+" invalid recording(s). Check plugins/AuraReplay/recordings/corrupt/. ");
+        }).exceptionally(error->{getLogger().warning("Recording integrity scan failed: "+error.getMessage());return null;});
         engine.start(); persistenceTask=Bukkit.getScheduler().runTaskTimer(this,this::persistProjectAsync,100L,100L);
         PersistentAuraReplayCommand command=new PersistentAuraReplayCommand(engine); if(getCommand("aurareplay")!=null){getCommand("aurareplay").setExecutor(command);getCommand("aurareplay").setTabCompleter(command);} if(getCommand("arstudio")!=null)getCommand("arstudio").setExecutor(new StudioCommand(engine));
         ActorSourceBrowser sourceBrowser=new ActorSourceBrowser(engine); getServer().getPluginManager().registerEvents(new StudioListener(engine.studioController(),sourceBrowser),this); getServer().getPluginManager().registerEvents(new SceneStudioListener(engine),this); getServer().getPluginManager().registerEvents(new ActorSourceBrowserListener(sourceBrowser,engine),this); getServer().getPluginManager().registerEvents(new PlaybackLifecycleListener(engine),this);
