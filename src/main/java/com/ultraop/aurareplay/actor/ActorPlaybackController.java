@@ -1,5 +1,6 @@
 package com.ultraop.aurareplay.actor;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.HashSet;
@@ -61,6 +62,24 @@ public final class ActorPlaybackController {
     }
     public void stop(Player viewer, ActorId actorId){Map<ActorId,ActorPlayback>m=sessions.get(viewer.getUniqueId());if(m==null)return;ActorPlayback p=m.remove(actorId);if(p!=null){backend.destroy(p.actor(),viewer);closeSource(p.source());}if(m.isEmpty())sessions.remove(viewer.getUniqueId(),m);}
     public void stopAll(Player viewer){Map<ActorId,ActorPlayback>m=sessions.remove(viewer.getUniqueId());if(m==null)return;for(ActorPlayback p:m.values()){backend.destroy(p.actor(),viewer);closeSource(p.source());}}
+
+    /** Stops every active viewer session that depends on a recording. Must run on the server thread. */
+    public int stopUsingRecording(String recordingName) {
+        String normalized = normalizeRecordingName(recordingName);
+        int stopped = 0;
+        for (Map.Entry<UUID, Map<ActorId, ActorPlayback>> entry : new HashSet<>(sessions.entrySet())) {
+            Player viewer = Bukkit.getPlayer(entry.getKey());
+            if (viewer == null) continue;
+            for (ActorPlayback playback : new HashSet<>(entry.getValue().values())) {
+                if (normalizeRecordingName(playback.actor().recording().name()).equals(normalized)) {
+                    stop(viewer, playback.actor().id());
+                    stopped++;
+                }
+            }
+        }
+        return stopped;
+    }
+
     public void tick(Player viewer){tickStandalone(viewer,Set.of());}
     public void clear(){for(Map<ActorId,ActorPlayback> viewerSessions:sessions.values())for(ActorPlayback playback:viewerSessions.values())closeSource(playback.source());sessions.clear();}
     public int sessionCount(){return sessions.values().stream().mapToInt(Map::size).sum();}
@@ -68,5 +87,6 @@ public final class ActorPlaybackController {
     private void prefetch(ActorPlayback playback){if(!(playback.source() instanceof IndexedActorPlaybackSource indexed)||prefetchExecutor==null||indexed.frameCount()==0)return;int center=(int)Math.floor(Math.max(0.0d,playback.cursor().position()));if(center%IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS!=0)return;indexed.prefetchAsync(center,IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS,prefetchExecutor);}
     private static int initialFrame(ActorDefinition actor,IndexedActorPlaybackSource source){return actor.reverse()?Math.max(0,source.frameCount()-1):0;}
     private static void closeSource(ActorPlaybackSource source){if(source instanceof IndexedActorPlaybackSource indexed)indexed.clearCache();}
+    private static String normalizeRecordingName(String name){return name == null ? "" : name.trim().toLowerCase(java.util.Locale.ROOT);}
     private void render(ActorPlayback playback,Player viewer){ActorSample sample=playback.sampleState();if(sample==null||!sample.exists())return;backend.update(playback.actor(),viewer,sample);}
 }
