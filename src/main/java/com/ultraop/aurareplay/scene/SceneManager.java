@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /** Main-thread scene registry and viewer-local scene playback coordinator. */
 public final class SceneManager {
     private final Map<String, Scene> scenes = new ConcurrentHashMap<>();
-    private final Map<UUID, String> activeScenes = new ConcurrentHashMap<>();
+    private final Map<UUID, ScenePlaybackSession> activeSessions = new ConcurrentHashMap<>();
     private final ActorManager actorManager;
     private final ActorPlaybackController playbackController;
 
@@ -30,15 +30,13 @@ public final class SceneManager {
         return scene;
     }
 
-    public Optional<Scene> get(String name) {
-        return Optional.ofNullable(scenes.get(normalize(name)));
-    }
+    public Optional<Scene> get(String name) { return Optional.ofNullable(scenes.get(normalize(name))); }
 
     public boolean delete(String name) {
         String key = normalize(name);
         Scene scene = scenes.remove(key);
         if (scene == null) return false;
-        activeScenes.entrySet().removeIf(entry -> entry.getValue().equals(key));
+        activeSessions.entrySet().removeIf(entry -> entry.getValue().scene().name().equals(scene.name()));
         return true;
     }
 
@@ -46,7 +44,17 @@ public final class SceneManager {
 
     public boolean addActor(String sceneName, ActorId actorId) {
         Scene scene = scenes.get(normalize(sceneName));
-        return scene != null && scene.addActor(actorId);
+        if (scene == null || actorManager.get(actorId).isEmpty()) return false;
+        boolean added = scene.addActor(actorId);
+        if (added) {
+            ActorDefinition actor = actorManager.get(actorId).orElseThrow();
+            if (scene.timeline().durationTicks() == 0L) {
+                scene.timeline().setDurationTicks(actor.recording().durationTicks());
+            } else if (actor.recording().durationTicks() > scene.timeline().durationTicks()) {
+                scene.timeline().setDurationTicks(actor.recording().durationTicks());
+            }
+        }
+        return added;
     }
 
     public boolean removeActor(String sceneName, ActorId actorId) {
@@ -54,10 +62,19 @@ public final class SceneManager {
         return scene != null && scene.removeActor(actorId);
     }
 
-    /** Starts every valid actor in the scene for one viewer. */
+    /** Starts every valid actor in the scene against one shared viewer-local scene clock. */
     public int play(Player viewer, String sceneName) {
         Scene scene = get(sceneName).orElseThrow(() -> new IllegalArgumentException("scene not found: " + sceneName));
         stop(viewer);
+        if (scene.timeline().durationTicks() == 0L) {
+            long duration = scene.actorIds().stream()
+                    .map(actorManager::get)
+                    .flatMap(Optional::stream)
+                    .mapToLong(actor -> actor.recording().durationTicks())
+                    .max().orElse(0L);
+            scene.timeline().setDurationTicks(duration);
+        }
+
         int started = 0;
         for (ActorId actorId : scene.actorIds()) {
             Optional<ActorDefinition> actor = actorManager.get(actorId);
@@ -65,27 +82,34 @@ public final class SceneManager {
             playbackController.start(viewer, actor.get());
             started++;
         }
-        activeScenes.put(viewer.getUniqueId(), normalize(sceneName));
+        activeSessions.put(viewer.getUniqueId(), new ScenePlaybackSession(scene));
         return started;
     }
 
-    public boolean stop(Player viewer) {
-        String sceneName = activeScenes.remove(viewer.getUniqueId());
-        if (sceneName == null) return false;
-        Scene scene = scenes.get(sceneName);
-        if (scene != null) {
-            for (ActorId actorId : scene.actorIds()) playbackController.stop(viewer, actorId);
+    /** Advances and renders one active scene for a viewer. Must run on the server thread. */
+    public void tick(Player viewer) {
+        ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
+        if (session == null) return;
+        if (!session.tick()) {
+            stop(viewer);
+            return;
         }
+        playbackController.tickScene(viewer, session.scene().actorIds(), session.cursor().tick());
+    }
+
+    public boolean stop(Player viewer) {
+        ScenePlaybackSession session = activeSessions.remove(viewer.getUniqueId());
+        if (session == null) return false;
+        for (ActorId actorId : session.scene().actorIds()) playbackController.stop(viewer, actorId);
         return true;
     }
 
     public Optional<String> activeScene(Player viewer) {
-        return Optional.ofNullable(activeScenes.get(viewer.getUniqueId()));
+        ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
+        return session == null ? Optional.empty() : Optional.of(session.scene().name());
     }
 
     public void stopAll(Player viewer) { stop(viewer); }
 
-    private static String normalize(String name) {
-        return name.trim().toLowerCase(java.util.Locale.ROOT);
-    }
+    private static String normalize(String name) { return name.trim().toLowerCase(java.util.Locale.ROOT); }
 }
