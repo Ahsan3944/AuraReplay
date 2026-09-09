@@ -37,9 +37,12 @@ class RecordingBinaryCodecTest {
 
         assertEquals(original.name(), decoded.name());
         assertEquals(original.durationTicks(), decoded.durationTicks());
-        assertEquals(original.frames(), decoded.frames());
-        assertEquals(entity, decoded.frames().getFirst().entities().getFirst());
-        assertEquals(frame.actions(), decoded.frames().getFirst().actions());
+        assertEquals(1, decoded.frames().size());
+        TickSnapshot decodedFrame = decoded.frames().getFirst();
+        assertEquals(frame.tick(), decodedFrame.tick());
+        assertEquals(1, decodedFrame.entities().size());
+        assertEquals(entity, decodedFrame.entities().getFirst());
+        assertEquals(frame.actions(), decodedFrame.actions());
     }
 
     @Test
@@ -60,15 +63,31 @@ class RecordingBinaryCodecTest {
 
         Recording decoded = roundTrip(original);
 
-        assertEquals(original.name(), decoded.name());
-        assertEquals(original.durationTicks(), decoded.durationTicks());
-        assertEquals(original.frames().size(), decoded.frames().size());
-        for (int i = 0; i < original.frames().size(); i++) {
-            assertEquals(original.frames().get(i), decoded.frames().get(i), "frame " + i);
+        assertEquals("DeltaTake", decoded.name());
+        assertEquals(22, decoded.durationTicks());
+        assertEquals(22, decoded.frames().size());
+
+        for (int i = 0; i < decoded.frames().size(); i++) {
+            TickSnapshot actualFrame = decoded.frames().get(i);
+            assertEquals(i, actualFrame.tick(), "frame tick " + i);
+            assertEquals(1, actualFrame.entities().size(), "entity count frame " + i);
+            EntitySnapshot actual = actualFrame.entities().getFirst();
+            assertEquals(7, actual.entityId(), "entity id frame " + i);
+            assertEquals(entityUuid, actual.uuid(), "entity uuid frame " + i);
+            assertEquals(EntityType.PLAYER, actual.type(), "entity type frame " + i);
+            assertEquals(10 + i, actual.x(), "x frame " + i);
+            assertEquals(64.0, actual.y(), "y frame " + i);
+            assertEquals(20.0, actual.z(), "z frame " + i);
+            assertEquals(90 + i, actual.yaw(), "yaw frame " + i);
+            assertEquals(10.0f, actual.pitch(), "pitch frame " + i);
+            assertEquals(0.1, actual.velocityX(), "vx frame " + i);
+            assertEquals(0.2, actual.velocityY(), "vy frame " + i);
+            assertEquals(0.3, actual.velocityZ(), "vz frame " + i);
+            assertEquals(3, actual.flags(), "flags frame " + i);
+            assertEquals(identity, actual.identity(), "identity frame " + i);
+            assertTrue(actual.exists(), "exists frame " + i);
+            assertEquals(List.of(new MarkerAction(i, "F" + i)), actualFrame.actions(), "actions frame " + i);
         }
-        assertEquals(21.0, decoded.frames().get(21).entities().getFirst().x());
-        assertEquals(111.0f, decoded.frames().get(21).entities().getFirst().yaw());
-        assertEquals("F20", ((MarkerAction) decoded.frames().get(20).actions().getFirst()).name());
     }
 
     @Test
