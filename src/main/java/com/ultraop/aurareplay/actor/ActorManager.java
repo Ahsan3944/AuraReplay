@@ -1,6 +1,7 @@
 package com.ultraop.aurareplay.actor;
 
 import com.ultraop.aurareplay.recording.Recording;
+import com.ultraop.aurareplay.recording.RecordingSource;
 
 import java.util.Collection;
 import java.util.Map;
@@ -24,6 +25,13 @@ public final class ActorManager {
         );
         actors.put(actor.id(), actor);
         return actor;
+    }
+
+    /** Creates an actor instance bound to one entity stream in a shared recording. */
+    public ActorDefinition createFromSource(Recording recording, RecordingSource source, ActorTransform transform) {
+        if (recording == null) throw new IllegalArgumentException("recording cannot be null");
+        if (source == null) throw new IllegalArgumentException("source cannot be null");
+        return create(recording, transform, source.uuid(), source.entityId());
     }
 
     public Optional<ActorDefinition> get(ActorId id) { return Optional.ofNullable(actors.get(id)); }
