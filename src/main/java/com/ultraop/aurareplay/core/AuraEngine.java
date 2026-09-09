@@ -13,6 +13,7 @@ import com.ultraop.aurareplay.recording.TickRecorder;
 import com.ultraop.aurareplay.scene.SceneCameraService;
 import com.ultraop.aurareplay.scene.SceneManager;
 import com.ultraop.aurareplay.scene.SceneTimelineService;
+import com.ultraop.aurareplay.ui.SceneStudioService;
 import com.ultraop.aurareplay.ui.StudioController;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -31,6 +32,7 @@ public final class AuraEngine {
     private final CameraController cameraController;
     private final CameraStudioService cameraStudioService;
     private final SceneCameraService sceneCameraService;
+    private final SceneStudioService sceneStudioService;
     private final StudioController studioController;
     private BukkitTask playbackTask;
 
@@ -43,6 +45,7 @@ public final class AuraEngine {
         this.sceneCameraService=new SceneCameraService(cameraManager);
         this.sceneManager=new SceneManager(actorManager,actorPlaybackController,sceneCameraService,cameraController);
         this.sceneTimelineService=new SceneTimelineService();
+        this.sceneStudioService=new SceneStudioService(sceneManager);
         this.cameraStudioService=new CameraStudioService(cameraManager,actorManager);
         this.studioController=new StudioController(this);
     }
@@ -51,5 +54,5 @@ public final class AuraEngine {
     public JavaPlugin plugin(){return plugin;} public ProtocolManager protocolManager(){return protocolManager;} public TickRecorder tickRecorder(){return tickRecorder;}
     public RecordingManager recordingManager(){return recordingManager;} public ActorManager actorManager(){return actorManager;} public ActorPlaybackController actorPlaybackController(){return actorPlaybackController;}
     public SceneManager sceneManager(){return sceneManager;} public SceneTimelineService sceneTimelineService(){return sceneTimelineService;} public CameraManager cameraManager(){return cameraManager;}
-    public CameraController cameraController(){return cameraController;} public CameraStudioService cameraStudioService(){return cameraStudioService;} public SceneCameraService sceneCameraService(){return sceneCameraService;} public StudioController studioController(){return studioController;}
+    public CameraController cameraController(){return cameraController;} public CameraStudioService cameraStudioService(){return cameraStudioService;} public SceneCameraService sceneCameraService(){return sceneCameraService;} public SceneStudioService sceneStudioService(){return sceneStudioService;} public StudioController studioController(){return studioController;}
 }
