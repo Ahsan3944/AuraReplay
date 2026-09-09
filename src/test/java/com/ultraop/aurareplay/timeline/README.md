@@ -1,0 +1,1 @@
+Timeline editor tests are pending the project's JUnit test dependency setup.
