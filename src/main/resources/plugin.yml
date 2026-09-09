@@ -10,7 +10,7 @@ commands:
   aurareplay:
     description: AuraReplay Motion Capture Studio
     aliases: [ar, aura]
-    usage: /aurareplay <record|scene|actor|studio|play|stop>
+    usage: /aurareplay <record|scene|actor|studio|timeline|stop>
 permissions:
   aurareplay.use:
     default: op
