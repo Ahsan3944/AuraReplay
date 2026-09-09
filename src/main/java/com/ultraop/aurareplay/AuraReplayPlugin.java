@@ -32,6 +32,7 @@ public final class AuraReplayPlugin extends JavaPlugin {
         ProtocolManager protocolManager=ProtocolLibrary.getProtocolManager(); engine=new AuraEngine(this,protocolManager);
         storageExecutor=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"AuraReplay-Storage");t.setDaemon(true);return t;});
         projectStorage=new ProjectStorage(this,storageExecutor); recordingStorage=new RecordingStorageManager(this,storageExecutor); actorStorage=new ActorStorage(this,storageExecutor); persistenceCoordinator=new PersistenceCoordinator(this,storageExecutor);
+        persistenceCoordinator.recoverIfNeeded();
         engine.recordingManager().attachStorage(recordingStorage);
         engine.actorPlaybackController().setSourceFactory(null);
         engine.actorPlaybackController().setAsyncSourceFactory(actor->engine.recordingManager().createPlaybackSourceAsync(actor.recording().name()),storageExecutor);
@@ -53,5 +54,5 @@ public final class AuraReplayPlugin extends JavaPlugin {
     }
     private void persistProjectAsync(){if(persistenceCoordinator==null||projectStorage==null||actorStorage==null||engine==null)return;ProjectStorage.ProjectSnapshot p=projectStorage.capture(engine.sceneManager(),engine.cameraManager());List<ActorStorage.ActorSnapshot>a=actorStorage.captureAll(engine.actorManager());pendingPersistence=pendingPersistence.handle((ignored,error)->null).thenCompose(ignored->persistenceCoordinator.saveAsync(p,a));}
     @Override public void onDisable(){if(persistenceTask!=null){persistenceTask.cancel();persistenceTask=null;}if(persistenceCoordinator!=null&&projectStorage!=null&&actorStorage!=null&&engine!=null){try{pendingPersistence.join();ProjectStorage.ProjectSnapshot p=projectStorage.capture(engine.sceneManager(),engine.cameraManager());List<ActorStorage.ActorSnapshot>a=actorStorage.captureAll(engine.actorManager());persistenceCoordinator.save(p,a);}finally{persistenceCoordinator.close();projectStorage.close();actorStorage.close();}}if(recordingStorage!=null)recordingStorage.close();if(engine!=null)engine.shutdown();if(storageExecutor!=null){storageExecutor.shutdown();storageExecutor=null;}}
-    public AuraEngine engine(){return engine;} public ProjectStorage projectStorage(){return projectStorage;} public RecordingStorageManager recordingStorage(){return recordingStorage;} public ActorStorage actorStorage(){return actorStorage;}
+    public AuraEngine engine(){return engine;} public ProjectStorage projectStorage(){return projectStorage;} public RecordingStorageManager recordingStorage(){return recordingStorage;} public ActorStorage actorStorage(){return actorStorage;} public PersistenceCoordinator persistenceCoordinator(){return persistenceCoordinator;}
 }
