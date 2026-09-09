@@ -7,100 +7,91 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.function.Function;
 
-/** Main-thread playback coordinator. Each viewer receives an independent cursor/session. */
+/** Main-thread playback coordinator. Disk-backed sources are warmed asynchronously. */
 public final class ActorPlaybackController {
     private final VirtualActorBackend backend;
     private final Map<UUID, Map<ActorId, ActorPlayback>> sessions = new HashMap<>();
     private Function<ActorDefinition, ActorPlaybackSource> sourceFactory = actor -> null;
+    private Function<ActorDefinition, CompletableFuture<ActorPlaybackSource>> asyncSourceFactory;
+    private Executor prefetchExecutor;
 
     public ActorPlaybackController(VirtualActorBackend backend) { this.backend = backend; }
 
-    /** Installs the durable recording source used for newly created playback sessions. */
-    public void setSourceFactory(Function<ActorDefinition, ActorPlaybackSource> sourceFactory) {
-        this.sourceFactory = sourceFactory == null ? actor -> null : sourceFactory;
-    }
+    public void setSourceFactory(Function<ActorDefinition, ActorPlaybackSource> sourceFactory) { this.sourceFactory = sourceFactory == null ? actor -> null : sourceFactory; }
+    public void setAsyncSourceFactory(Function<ActorDefinition, CompletableFuture<ActorPlaybackSource>> factory, Executor executor) { this.asyncSourceFactory = factory; this.prefetchExecutor = executor; }
 
     public void start(Player viewer, ActorDefinition actor) {
         Map<ActorId, ActorPlayback> viewerSessions = sessions.computeIfAbsent(viewer.getUniqueId(), ignored -> new HashMap<>());
         ActorPlaybackSource source = sourceFactory.apply(actor);
         ActorPlayback playback = source == null ? new ActorPlayback(actor) : new ActorPlayback(actor, source);
-        if (source instanceof IndexedActorPlaybackSource indexed) {
-            try { indexed.prefetch(actor.reverse() ? Math.max(0, indexed.frameCount() - 1) : 0, IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS); }
-            catch (Exception ignored) { }
-        }
         viewerSessions.put(actor.id(), playback);
-        if (actor.visible()) {
-            backend.spawn(actor, viewer);
-            backend.updateIdentity(actor, viewer);
-        }
+        if (actor.visible()) { backend.spawn(actor, viewer); backend.updateIdentity(actor, viewer); }
         render(playback, viewer);
+
+        if (asyncSourceFactory != null) {
+            asyncSourceFactory.apply(actor).whenComplete((ready, error) -> {
+                if (error != null || ready == null) return;
+                if (ready instanceof IndexedActorPlaybackSource indexed) {
+                    indexed.prefetchAsync(initialFrame(actor, indexed), IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS, prefetchExecutor);
+                }
+                replaceSource(viewer.getUniqueId(), actor.id(), ready);
+            });
+        }
     }
 
-    /** Renders all actors in a scene at one shared scene-time position. */
+    /** Replaces a temporary memory source with the durable source without changing playback position. */
+    public void replaceSource(UUID viewerId, ActorId actorId, ActorPlaybackSource source) {
+        Map<ActorId, ActorPlayback> viewerSessions = sessions.get(viewerId);
+        if (viewerSessions == null) return;
+        ActorPlayback old = viewerSessions.get(actorId);
+        if (old == null) return;
+        ActorPlayback replacement = new ActorPlayback(old.actor(), source);
+        replacement.setScenePosition(old.cursor().position());
+        viewerSessions.put(actorId, replacement);
+    }
+
     public void tickScene(Player viewer, Iterable<ActorId> actorIds, double sceneTick) {
         Map<ActorId, ActorPlayback> viewerSessions = sessions.get(viewer.getUniqueId());
         if (viewerSessions == null) return;
         for (ActorId actorId : actorIds) {
-            ActorPlayback playback = viewerSessions.get(actorId);
-            if (playback == null) continue;
+            ActorPlayback playback = viewerSessions.get(actorId); if (playback == null) continue;
             ActorDefinition actor = playback.actor();
-            if (!actor.visible()) {
-                backend.destroy(actor, viewer);
-                continue;
-            }
+            if (!actor.visible()) { backend.destroy(actor, viewer); continue; }
             if (!actor.frozen()) playback.setScenePosition(sceneTick);
-            prefetch(playback);
-            render(playback, viewer);
+            prefetch(playback); render(playback, viewer);
         }
     }
 
-    /** Advances ordinary actor sessions while leaving scene-owned actors to SceneManager. */
     public void tickStandalone(Player viewer, Set<ActorId> excluded) {
-        Map<ActorId, ActorPlayback> viewerSessions = sessions.get(viewer.getUniqueId());
-        if (viewerSessions == null) return;
+        Map<ActorId, ActorPlayback> viewerSessions = sessions.get(viewer.getUniqueId()); if (viewerSessions == null) return;
         for (ActorPlayback playback : new HashSet<>(viewerSessions.values())) {
             if (excluded.contains(playback.actor().id())) continue;
             ActorDefinition actor = playback.actor();
-            if (!actor.visible()) {
-                backend.destroy(actor, viewer);
-                continue;
-            }
-            playback.tick();
-            prefetch(playback);
-            render(playback, viewer);
+            if (!actor.visible()) { backend.destroy(actor, viewer); continue; }
+            playback.tick(); prefetch(playback); render(playback, viewer);
         }
     }
 
-    public void stop(Player viewer, ActorId actorId) {
-        Map<ActorId, ActorPlayback> viewerSessions = sessions.get(viewer.getUniqueId());
-        if (viewerSessions == null) return;
-        ActorPlayback playback = viewerSessions.remove(actorId);
-        if (playback != null) backend.destroy(playback.actor(), viewer);
-        if (viewerSessions.isEmpty()) sessions.remove(viewer.getUniqueId());
-    }
-
-    public void stopAll(Player viewer) {
-        Map<ActorId, ActorPlayback> viewerSessions = sessions.remove(viewer.getUniqueId());
-        if (viewerSessions == null) return;
-        for (ActorPlayback playback : viewerSessions.values()) backend.destroy(playback.actor(), viewer);
-    }
-
+    public void stop(Player viewer, ActorId actorId) { Map<ActorId, ActorPlayback> m=sessions.get(viewer.getUniqueId()); if(m==null)return; ActorPlayback p=m.remove(actorId); if(p!=null)backend.destroy(p.actor(),viewer); if(m.isEmpty())sessions.remove(viewer.getUniqueId()); }
+    public void stopAll(Player viewer) { Map<ActorId, ActorPlayback> m=sessions.remove(viewer.getUniqueId()); if(m==null)return; for(ActorPlayback p:m.values())backend.destroy(p.actor(),viewer); }
     public void tick(Player viewer) { tickStandalone(viewer, Set.of()); }
     public void clear() { sessions.clear(); }
     public int sessionCount() { return sessions.values().stream().mapToInt(Map::size).sum(); }
 
     private void prefetch(ActorPlayback playback) {
-        if (!(playback.source() instanceof IndexedActorPlaybackSource indexed) || indexed.frameCount() == 0) return;
-        int center = (int) Math.floor(Math.max(0.0d, playback.cursor().position()));
-        try { indexed.prefetch(center, IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS); }
-        catch (Exception ignored) { }
+        if (!(playback.source() instanceof IndexedActorPlaybackSource indexed) || prefetchExecutor == null || indexed.frameCount() == 0) return;
+        int center = (int)Math.floor(Math.max(0.0d, playback.cursor().position()));
+        if (center % IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS != 0) return;
+        indexed.prefetchAsync(center, IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS, prefetchExecutor);
     }
 
-    private void render(ActorPlayback playback, Player viewer) {
-        ActorSample sample = playback.sampleState();
-        if (sample == null || !sample.exists()) return;
-        backend.update(playback.actor(), viewer, sample);
+    private static int initialFrame(ActorDefinition actor, IndexedActorPlaybackSource source) {
+        return actor.reverse() ? Math.max(0, source.frameCount() - 1) : 0;
     }
+
+    private void render(ActorPlayback playback, Player viewer) { ActorSample sample=playback.sampleState(); if(sample==null||!sample.exists())return; backend.update(playback.actor(),viewer,sample); }
 }
