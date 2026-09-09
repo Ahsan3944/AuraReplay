@@ -12,6 +12,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -48,7 +49,7 @@ public final class SceneStudioListener implements Listener {
         if (!title.equals(PROJECT) && !title.startsWith(SCENE_PREFIX)) return;
         event.setCancelled(true);
         if (title.equals(PROJECT)) projectClick(player, event.getRawSlot());
-        else sceneClick(player, event.getRawSlot());
+        else sceneClick(player, event.getRawSlot(), event.getClick());
     }
 
     private void projectClick(Player player, int slot) {
@@ -87,7 +88,7 @@ public final class SceneStudioListener implements Listener {
         }
     }
 
-    private void sceneClick(Player player, int slot) {
+    private void sceneClick(Player player, int slot, ClickType click) {
         Scene scene = selectedScene(player);
         if (scene == null) { renderProject(player); return; }
         var service = engine.sceneStudioService();
@@ -119,24 +120,40 @@ public final class SceneStudioListener implements Listener {
             } else if (slot == 17) {
                 editor.setReverse(scene.timeline(), !scene.timeline().reverse());
             } else if (slot == 18) {
+                editor.setRange(scene.timeline(), scene.timeline().inPoint(), scene.timeline().outPoint());
                 engine.sceneManager().play(player, scene.name());
             } else if (slot == 19) {
                 engine.sceneManager().stop(player);
             } else if (slot == 20) {
-                tick = Math.min(scene.timeline().durationTicks(), tick + 20);
+                if (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) {
+                    editor.setDuration(scene.timeline(), scene.timeline().durationTicks() + 20);
+                } else {
+                    editor.setDuration(scene.timeline(), Math.max(0, scene.timeline().durationTicks() - 20));
+                }
+                tick = Math.min(tick, scene.timeline().durationTicks());
                 timelineTicks.put(player.getUniqueId(), tick);
             } else if (slot == 21) {
-                tick = Math.max(scene.timeline().inPoint(), tick - 20);
-                timelineTicks.put(player.getUniqueId(), tick);
+                if (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) {
+                    long out = Math.max(scene.timeline().inPoint(), Math.min(tick, scene.timeline().durationTicks()));
+                    editor.setRange(scene.timeline(), scene.timeline().inPoint(), out);
+                } else {
+                    long in = Math.max(0, Math.min(tick, scene.timeline().outPoint()));
+                    editor.setRange(scene.timeline(), in, scene.timeline().outPoint());
+                }
             } else if (slot == 22) {
-                editor.addMarker(scene.timeline(), new TimelineMarker("studio-" + tick, tick, "MARKER @ " + tick));
+                if (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) {
+                    var markers = scene.timeline().markers();
+                    if (!markers.isEmpty()) editor.removeMarker(scene.timeline(), markers.get(markers.size() - 1).id());
+                } else {
+                    editor.addMarker(scene.timeline(), new TimelineMarker("studio-" + tick, tick, "MARKER @ " + tick));
+                }
             } else if (slot == 23) {
-                var markers = scene.timeline().markers();
-                if (!markers.isEmpty()) editor.removeMarker(scene.timeline(), markers.get(markers.size() - 1).id());
+                if (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) editor.redo(scene.timeline());
+                else editor.undo(scene.timeline());
             } else if (slot == 24) {
-                editor.undo(scene.timeline());
+                engine.sceneManager().play(player, scene.name());
             } else if (slot == 25) {
-                editor.redo(scene.timeline());
+                engine.sceneManager().stop(player);
             } else if (slot == 26) {
                 renderProject(player);
                 return;
@@ -186,12 +203,12 @@ public final class SceneStudioListener implements Listener {
         item(inventory, 18, Material.LIME_DYE, "Play Scene", "Viewer-local scene preview");
         item(inventory, 19, Material.RED_DYE, "Stop Scene");
         long tick = timelineTicks.getOrDefault(player.getUniqueId(), scene.timeline().inPoint());
-        item(inventory, 20, Material.CLOCK, "Timeline +20", "Current tick: " + tick);
-        item(inventory, 21, Material.SPECTRAL_ARROW, "Timeline -20", "Current tick: " + tick);
-        item(inventory, 22, Material.NAME_TAG, "Add Marker", "Tick: " + tick, "Markers: " + scene.timeline().markers().size());
-        item(inventory, 23, Material.REDSTONE_TORCH, "Remove Last Marker", "Markers: " + scene.timeline().markers().size());
-        item(inventory, 24, Material.PAPER, "Undo", "Non-destructive timeline edit");
-        item(inventory, 25, Material.ENDER_CHEST, "Redo", "Non-destructive timeline edit");
+        item(inventory, 20, Material.CLOCK, "Duration ±20", "Left: -20 ticks", "Right: +20 ticks", "Current: " + scene.timeline().durationTicks());
+        item(inventory, 21, Material.COMPARATOR, "In / Out", "Left: set In at current tick", "Right: set Out at current tick", "Current: " + scene.timeline().inPoint() + " → " + scene.timeline().outPoint(), "Timeline cursor: " + tick);
+        item(inventory, 22, Material.NAME_TAG, "Marker", "Left: add marker", "Right: remove last marker", "Markers: " + scene.timeline().markers().size(), "Tick: " + tick);
+        item(inventory, 23, Material.PAPER, "History", "Left: Undo", "Right: Redo");
+        item(inventory, 24, Material.LIME_DYE, "Play Preview", "Starts at scene In point");
+        item(inventory, 25, Material.RED_DYE, "Stop Preview");
         item(inventory, 26, Material.ARROW, "Back", "Return to Project");
         player.openInventory(inventory);
     }
