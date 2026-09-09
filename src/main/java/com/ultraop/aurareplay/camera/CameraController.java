@@ -14,12 +14,35 @@ public final class CameraController {
     public CameraController(CameraBackend backend) { this.backend = backend; }
 
     public void start(Player viewer, CameraDefinition camera) {
+        start(viewer, camera, 0.0);
+    }
+
+    public void start(Player viewer, CameraDefinition camera, double startTick) {
         stop(viewer);
         CameraPlaybackSession session = new CameraPlaybackSession(camera);
         session.start();
+        session.setTick(startTick);
         sessions.put(viewer.getUniqueId(), session);
         backend.activate(viewer, camera);
         backend.update(viewer, session.sample());
+    }
+
+    public boolean seek(Player viewer, double tick) {
+        CameraPlaybackSession session = sessions.get(viewer.getUniqueId());
+        if (session == null || !session.active()) return false;
+        session.setTick(tick);
+        backend.update(viewer, session.sample());
+        return true;
+    }
+
+    public double tick(Player viewer) {
+        CameraPlaybackSession session = sessions.get(viewer.getUniqueId());
+        return session == null ? 0.0 : session.tick();
+    }
+
+    public boolean active(Player viewer) {
+        CameraPlaybackSession session = sessions.get(viewer.getUniqueId());
+        return session != null && session.active();
     }
 
     public void tick(Player viewer) {
