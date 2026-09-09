@@ -15,6 +15,7 @@ import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerEntity;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerPlayerConnection;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import org.bukkit.Bukkit;
 import org.bukkit.craftbukkit.CraftServer;
@@ -24,8 +25,10 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -75,12 +78,14 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         var scale = npc.getAttribute(Attributes.SCALE);
         if (scale != null) scale.setBaseValue(transform.scale());
 
+        Set<ServerPlayerConnection> trackedConnections = new HashSet<>();
         ServerEntity tracker = new ServerEntity(
                 level,
                 npc,
                 1,
                 true,
-                new ViewerSynchronizer(viewerHandle)
+                new ViewerSynchronizer(viewerHandle),
+                trackedConnections
         );
 
         RenderedActor state = new RenderedActor(npc, tracker, fakeUuid);
