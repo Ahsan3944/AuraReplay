@@ -34,7 +34,10 @@ public final class AuraEngine {
     public void start() {
         if (playbackTask != null) return;
         playbackTask = Bukkit.getScheduler().runTaskTimer(plugin, () ->
-                Bukkit.getOnlinePlayers().forEach(actorPlaybackController::tick), 1L, 1L);
+                Bukkit.getOnlinePlayers().forEach(viewer -> {
+                    sceneManager.tick(viewer);
+                    actorPlaybackController.tickStandalone(viewer, sceneManager.activeActorIds(viewer));
+                }), 1L, 1L);
     }
 
     public void shutdown() {
