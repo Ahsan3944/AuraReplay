@@ -36,6 +36,10 @@ public final class AuraReplayPlugin extends JavaPlugin {
         engine.actorPlaybackController().setAsyncSourceFactory(actor->engine.recordingManager().createPlaybackSourceAsync(actor.recording().name()),storageExecutor);
         Executor mainThreadExecutor=task->Bukkit.getScheduler().runTask(this,task);
         engine.actorPlaybackController().setMainThreadExecutor(mainThreadExecutor);
+        engine.recordingManager().setDeletionListener(name -> mainThreadExecutor.execute(() -> {
+            engine.actorPlaybackController().stopUsingRecording(name);
+            engine.actorManager().removeUsingRecording(name);
+        }));
 
         engine.recordingManager().loadAllAsync().join(); actorStorage.loadInto(engine.actorManager(),engine.recordingManager()); projectStorage.loadInto(engine.sceneManager(),engine.cameraManager());
         engine.start(); persistenceTask=Bukkit.getScheduler().runTaskTimer(this,this::persistProjectAsync,100L,100L);
