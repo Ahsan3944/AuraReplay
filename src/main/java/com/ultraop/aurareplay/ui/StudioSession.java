@@ -7,18 +7,19 @@ import java.util.UUID;
 public final class StudioSession {
     public enum Page { ROOT, CATEGORY, ACTORS, ACTOR, TRANSFORM, MOTION }
     private final UUID viewerId;
-    private Page page = Page.ROOT;
+    private Page page=Page.ROOT;
     private String category;
     private ActorId selectedActor;
-    public StudioSession(UUID viewerId) { this.viewerId = viewerId; }
-    public UUID viewerId() { return viewerId; }
-    public Page page() { return page; }
-    public String category() { return category; }
-    public ActorId selectedActor() { return selectedActor; }
-    public void root() { page=Page.ROOT; category=null; selectedActor=null; }
-    public void category(String category) { page=Page.CATEGORY; this.category=category; }
-    public void actors() { page=Page.ACTORS; category="Actors"; }
-    public void selectActor(ActorId actorId) { selectedActor=actorId; page=Page.ACTOR; category="Actors / "+actorId; }
-    public void transform() { page=Page.TRANSFORM; category="Transform"; }
-    public void motion() { page=Page.MOTION; category="Motion"; }
+    public StudioSession(UUID viewerId){this.viewerId=viewerId;}
+    public UUID viewerId(){return viewerId;}
+    public Page page(){return page;}
+    public String category(){return category;}
+    public ActorId selectedActor(){return selectedActor;}
+    public void root(){page=Page.ROOT;category=null;selectedActor=null;}
+    public void category(String category){page=Page.CATEGORY;this.category=category;}
+    public void actors(){page=Page.ACTORS;category="Actors";}
+    public void selectActor(ActorId actorId){selectedActor=actorId;page=Page.ACTOR;category="Actors / "+actorId;}
+    public void pageActor(){page=Page.ACTOR;category="Actors / "+selectedActor;}
+    public void transform(){page=Page.TRANSFORM;category="Transform";}
+    public void motion(){page=Page.MOTION;category="Motion";}
 }
