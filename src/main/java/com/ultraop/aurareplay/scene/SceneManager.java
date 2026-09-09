@@ -36,7 +36,7 @@ public final class SceneManager {
         String key = normalize(name);
         Scene scene = scenes.remove(key);
         if (scene == null) return false;
-        activeSessions.entrySet().removeIf(entry -> entry.getValue().scene().name().equals(scene.name()));
+        activeSessions.entrySet().removeIf(entry -> entry.getValue().scene() == scene);
         return true;
     }
 
@@ -44,15 +44,13 @@ public final class SceneManager {
 
     public boolean addActor(String sceneName, ActorId actorId) {
         Scene scene = scenes.get(normalize(sceneName));
-        if (scene == null || actorManager.get(actorId).isEmpty()) return false;
+        if (scene == null) return false;
+        Optional<ActorDefinition> actor = actorManager.get(actorId);
+        if (actor.isEmpty()) return false;
         boolean added = scene.addActor(actorId);
         if (added) {
-            ActorDefinition actor = actorManager.get(actorId).orElseThrow();
-            if (scene.timeline().durationTicks() == 0L) {
-                scene.timeline().setDurationTicks(actor.recording().durationTicks());
-            } else if (actor.recording().durationTicks() > scene.timeline().durationTicks()) {
-                scene.timeline().setDurationTicks(actor.recording().durationTicks());
-            }
+            long actorDuration = actor.get().recording().durationTicks();
+            if (actorDuration > scene.timeline().durationTicks()) scene.timeline().setDurationTicks(actorDuration);
         }
         return added;
     }
@@ -82,7 +80,9 @@ public final class SceneManager {
             playbackController.start(viewer, actor.get());
             started++;
         }
-        activeSessions.put(viewer.getUniqueId(), new ScenePlaybackSession(scene));
+        ScenePlaybackSession session = new ScenePlaybackSession(scene);
+        activeSessions.put(viewer.getUniqueId(), session);
+        playbackController.tickScene(viewer, scene.actorIds(), session.cursor().tick());
         return started;
     }
 
@@ -90,11 +90,9 @@ public final class SceneManager {
     public void tick(Player viewer) {
         ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
         if (session == null) return;
-        if (!session.tick()) {
-            stop(viewer);
-            return;
-        }
+        boolean active = session.tick();
         playbackController.tickScene(viewer, session.scene().actorIds(), session.cursor().tick());
+        if (!active) stop(viewer);
     }
 
     public boolean stop(Player viewer) {
@@ -110,6 +108,5 @@ public final class SceneManager {
     }
 
     public void stopAll(Player viewer) { stop(viewer); }
-
     private static String normalize(String name) { return name.trim().toLowerCase(java.util.Locale.ROOT); }
 }
