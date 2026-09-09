@@ -21,7 +21,7 @@ import java.util.zip.GZIPOutputStream;
 public final class RecordingBinaryCodec {
     private static final int MAGIC = 0x41555241;
     private static final int VERSION = 3;
-    private static final int KEYFRAME_INTERVAL = 20;
+    static final int KEYFRAME_INTERVAL_FOR_INDEX = 20;
 
     private static final int POSITION = 1;
     private static final int ROTATION = 1 << 1;
@@ -44,7 +44,7 @@ public final class RecordingBinaryCodec {
             Map<EntityKey, EntitySnapshot> previous = new HashMap<>();
             for (int index = 0; index < recording.frames().size(); index++) {
                 TickSnapshot frame = recording.frames().get(index);
-                boolean keyframe = index == 0 || index % KEYFRAME_INTERVAL == 0;
+                boolean keyframe = index == 0 || index % KEYFRAME_INTERVAL_FOR_INDEX == 0;
                 out.writeLong(frame.tick());
                 out.writeBoolean(keyframe);
                 out.writeInt(frame.entities().size());
@@ -98,7 +98,6 @@ public final class RecordingBinaryCodec {
                 previous = current;
             }
 
-            // Force GZIPInputStream to consume the trailer so CRC/size corruption is detected.
             if (in.read() != -1) throw new IOException("trailing data after AuraReplay recording");
             return new Recording(name, duration, frames);
         }
@@ -109,7 +108,6 @@ public final class RecordingBinaryCodec {
         writeUuid(out, key.uuid());
         out.writeInt(key.entityId());
         writeString(out, current.type().name());
-
         int mask = keyframe || previous == null ? POSITION | ROTATION | VELOCITY | FLAGS | EQUIPMENT | IDENTITY | EXISTS : changedMask(current, previous);
         out.writeByte(mask);
         if ((mask & POSITION) != 0) { out.writeDouble(current.x()); out.writeDouble(current.y()); out.writeDouble(current.z()); }
@@ -128,7 +126,6 @@ public final class RecordingBinaryCodec {
         EntityKey key = new EntityKey(uuid, entityId);
         EntitySnapshot base = previous == null ? null : previous.get(key);
         if (keyframe || base == null) base = null;
-
         int mask = in.readUnsignedByte();
         double x = base == null ? 0 : base.x(), y = base == null ? 0 : base.y(), z = base == null ? 0 : base.z();
         float yaw = base == null ? 0 : base.yaw(), pitch = base == null ? 0 : base.pitch();
@@ -137,7 +134,6 @@ public final class RecordingBinaryCodec {
         EquipmentSnapshot equipment = base == null ? null : base.equipment();
         EntityIdentitySnapshot identity = base == null ? null : base.identity();
         boolean exists = base == null || base.exists();
-
         if ((mask & POSITION) != 0) { x = in.readDouble(); y = in.readDouble(); z = in.readDouble(); }
         if ((mask & ROTATION) != 0) { yaw = in.readFloat(); pitch = in.readFloat(); }
         if ((mask & VELOCITY) != 0) { vx = in.readDouble(); vy = in.readDouble(); vz = in.readDouble(); }
@@ -145,7 +141,6 @@ public final class RecordingBinaryCodec {
         if ((mask & EQUIPMENT) != 0) equipment = in.readBoolean() ? readEquipment(in) : null;
         if ((mask & IDENTITY) != 0) identity = in.readBoolean() ? readIdentity(in) : null;
         if ((mask & EXISTS) != 0) exists = in.readBoolean();
-
         return new EntitySnapshot(entityId, uuid, type, x, y, z, yaw, pitch, vx, vy, vz, flags, equipment, identity, exists);
     }
 
@@ -167,7 +162,6 @@ public final class RecordingBinaryCodec {
         else if (action instanceof BlockAction value) { out.writeByte(3); out.writeLong(value.tick()); out.writeInt(value.x()); out.writeInt(value.y()); out.writeInt(value.z()); writeString(out, value.blockData()); }
         else throw new IOException("unsupported action type: " + action.getClass().getName());
     }
-
     private static Action readAction(DataInputStream in) throws IOException {
         return switch (in.readUnsignedByte()) {
             case 1 -> new ChatAction(in.readLong(), readUuid(in), readString(in));
@@ -176,22 +170,12 @@ public final class RecordingBinaryCodec {
             default -> throw new IOException("unsupported recording action type");
         };
     }
-
-    private static void writeEquipment(DataOutputStream out, EquipmentSnapshot e) throws IOException {
-        writeItem(out, e.mainHand()); writeItem(out, e.offHand()); writeItem(out, e.helmet());
-        writeItem(out, e.chestplate()); writeItem(out, e.leggings()); writeItem(out, e.boots());
-    }
-    private static EquipmentSnapshot readEquipment(DataInputStream in) throws IOException {
-        return new EquipmentSnapshot(readItem(in), readItem(in), readItem(in), readItem(in), readItem(in), readItem(in));
-    }
+    private static void writeEquipment(DataOutputStream out, EquipmentSnapshot e) throws IOException { writeItem(out, e.mainHand()); writeItem(out, e.offHand()); writeItem(out, e.helmet()); writeItem(out, e.chestplate()); writeItem(out, e.leggings()); writeItem(out, e.boots()); }
+    private static EquipmentSnapshot readEquipment(DataInputStream in) throws IOException { return new EquipmentSnapshot(readItem(in), readItem(in), readItem(in), readItem(in), readItem(in), readItem(in)); }
     private static void writeItem(DataOutputStream out, ItemStack item) throws IOException { out.writeBoolean(item != null); if (item != null) writeBytes(out, item.serializeAsBytes()); }
     private static ItemStack readItem(DataInputStream in) throws IOException { return in.readBoolean() ? ItemStack.deserializeBytes(readBytes(in)) : null; }
-
-    private static void writeIdentity(DataOutputStream out, EntityIdentitySnapshot i) throws IOException {
-        writeUuid(out, i.profileUuid()); writeString(out, i.profileName()); writeNullableString(out, i.skinTextureValue()); writeNullableString(out, i.skinTextureSignature());
-    }
+    private static void writeIdentity(DataOutputStream out, EntityIdentitySnapshot i) throws IOException { writeUuid(out, i.profileUuid()); writeString(out, i.profileName()); writeNullableString(out, i.skinTextureValue()); writeNullableString(out, i.skinTextureSignature()); }
     private static EntityIdentitySnapshot readIdentity(DataInputStream in) throws IOException { return new EntityIdentitySnapshot(readUuid(in), readString(in), readNullableString(in), readNullableString(in)); }
-
     private static void writeUuid(DataOutputStream out, UUID value) throws IOException { out.writeBoolean(value != null); if (value != null) { out.writeLong(value.getMostSignificantBits()); out.writeLong(value.getLeastSignificantBits()); } }
     private static UUID readNullableUuid(DataInputStream in) throws IOException { return in.readBoolean() ? new UUID(in.readLong(), in.readLong()) : null; }
     private static UUID readUuid(DataInputStream in) throws IOException { UUID value = readNullableUuid(in); if (value == null) throw new IOException("required UUID is missing"); return value; }
@@ -202,8 +186,5 @@ public final class RecordingBinaryCodec {
     private static void writeString(DataOutputStream out, String value) throws IOException { byte[] bytes = value.getBytes(StandardCharsets.UTF_8); out.writeInt(bytes.length); out.write(bytes); }
     private static String readString(DataInputStream in) throws IOException { int n = checkedCount(in.readInt()); byte[] bytes = in.readNBytes(n); if (bytes.length != n) throw new EOFException(); return new String(bytes, StandardCharsets.UTF_8); }
     private static int checkedCount(int value) throws IOException { if (value < 0 || value > 10_000_000) throw new IOException("invalid recording data count: " + value); return value; }
-
-    private record EntityKey(UUID uuid, int entityId) {
-        static EntityKey of(EntitySnapshot entity) { return new EntityKey(entity.uuid(), entity.entityId()); }
-    }
+    private record EntityKey(UUID uuid, int entityId) { static EntityKey of(EntitySnapshot entity) { return new EntityKey(entity.uuid(), entity.entityId()); } }
 }
