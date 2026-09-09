@@ -29,20 +29,12 @@ import java.util.UUID;
 public final class AuraReplayCommand implements CommandExecutor, TabCompleter {
     private final AuraEngine engine;
 
-    public AuraReplayCommand(AuraEngine engine) {
-        this.engine = engine;
-    }
+    public AuraReplayCommand(AuraEngine engine) { this.engine = engine; }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!sender.hasPermission("aurareplay.use")) {
-            sender.sendMessage(ChatColor.RED + "You do not have permission to use AuraReplay.");
-            return true;
-        }
-        if (args.length == 0 || args[0].equalsIgnoreCase("studio")) {
-            showStudio(sender);
-            return true;
-        }
+        if (!sender.hasPermission("aurareplay.use")) { sender.sendMessage(ChatColor.RED + "You do not have permission to use AuraReplay."); return true; }
+        if (args.length == 0 || args[0].equalsIgnoreCase("studio")) { showStudio(sender); return true; }
         try {
             switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "record" -> handleRecord(sender);
@@ -56,9 +48,7 @@ public final class AuraReplayCommand implements CommandExecutor, TabCompleter {
                 case "version" -> sender.sendMessage(ChatColor.AQUA + "AuraReplay 0.1.0-SNAPSHOT | Paper 1.21.11");
                 default -> sendUsage(sender);
             }
-        } catch (IllegalArgumentException e) {
-            sender.sendMessage(ChatColor.RED + e.getMessage());
-        }
+        } catch (IllegalArgumentException e) { sender.sendMessage(ChatColor.RED + e.getMessage()); }
         return true;
     }
 
@@ -73,33 +63,16 @@ public final class AuraReplayCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleRecord(CommandSender s) {
-        if (!(s instanceof Player p)) {
-            s.sendMessage(ChatColor.RED + "Recording must be started by a player.");
-            return;
-        }
-        if (!p.hasPermission("aurareplay.record")) {
-            p.sendMessage(ChatColor.RED + "You do not have recording permission.");
-            return;
-        }
-        if (engine.tickRecorder().isRecording()) {
-            p.sendMessage(ChatColor.RED + "A recording is already active.");
-            return;
-        }
-        engine.tickRecorder().track(p);
-        engine.tickRecorder().start();
-        p.sendMessage(ChatColor.GREEN + "Recording started.");
+        if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Recording must be started by a player."); return; }
+        if (!p.hasPermission("aurareplay.record")) { p.sendMessage(ChatColor.RED + "You do not have recording permission."); return; }
+        if (engine.tickRecorder().isRecording()) { p.sendMessage(ChatColor.RED + "A recording is already active."); return; }
+        engine.tickRecorder().track(p); engine.tickRecorder().start(); p.sendMessage(ChatColor.GREEN + "Recording started.");
     }
 
     private void handleStop(CommandSender s, String[] a) {
-        if (!engine.tickRecorder().isRecording()) {
-            s.sendMessage(ChatColor.YELLOW + "No recording is active.");
-            return;
-        }
+        if (!engine.tickRecorder().isRecording()) { s.sendMessage(ChatColor.YELLOW + "No recording is active."); return; }
         var r = engine.tickRecorder().stop(a.length >= 2 ? a[1] : "capture-" + System.currentTimeMillis());
-        if (r != null) {
-            engine.recordingManager().register(r);
-            s.sendMessage(ChatColor.GREEN + "Saved recording '" + r.name() + "' with " + r.durationTicks() + " ticks.");
-        }
+        if (r != null) { engine.recordingManager().register(r); s.sendMessage(ChatColor.GREEN + "Saved recording '" + r.name() + "' with " + r.durationTicks() + " ticks."); }
     }
 
     private void handleList(CommandSender s) {
@@ -109,43 +82,19 @@ public final class AuraReplayCommand implements CommandExecutor, TabCompleter {
 
     private void handleActor(CommandSender s, String[] a) {
         if (!(s instanceof Player p)) return;
-        if (!p.hasPermission("aurareplay.actor")) {
-            p.sendMessage(ChatColor.RED + "You do not have actor permission.");
-            return;
-        }
-        if (a.length < 2) {
-            p.sendMessage(ChatColor.YELLOW + "/aurareplay actor <spawn|stop>");
-            return;
-        }
+        if (!p.hasPermission("aurareplay.actor")) { p.sendMessage(ChatColor.RED + "You do not have actor permission."); return; }
+        if (a.length < 2) { p.sendMessage(ChatColor.YELLOW + "/aurareplay actor <spawn|stop>"); return; }
         if (a[1].equalsIgnoreCase("spawn")) {
-            if (a.length < 3) {
-                p.sendMessage(ChatColor.YELLOW + "/aurareplay actor spawn <recording>");
-                return;
-            }
+            if (a.length < 3) { p.sendMessage(ChatColor.YELLOW + "/aurareplay actor spawn <recording>"); return; }
             var r = engine.recordingManager().get(a[2]);
-            if (r.isEmpty() || r.get().frames().isEmpty() || r.get().frames().get(0).entities().isEmpty()) {
-                p.sendMessage(ChatColor.RED + "Recording not found or contains no entity data.");
-                return;
-            }
-            var source = r.get().frames().get(0).entities().get(0);
-            var l = p.getLocation();
+            if (r.isEmpty() || r.get().frames().isEmpty() || r.get().frames().get(0).entities().isEmpty()) { p.sendMessage(ChatColor.RED + "Recording not found or contains no entity data."); return; }
+            var source = r.get().frames().get(0).entities().get(0); var l = p.getLocation();
             ActorDefinition actor = engine.actorManager().create(r.get(), ActorTransform.origin(l.getX(), l.getY(), l.getZ(), l.getYaw(), l.getPitch()), source.uuid(), source.entityId());
-            actor.setName(r.get().name());
-            engine.actorPlaybackController().start(p, actor);
-            p.sendMessage(ChatColor.GREEN + "Actor spawned: " + actor.id());
+            actor.setName(r.get().name()); engine.actorPlaybackController().start(p, actor); p.sendMessage(ChatColor.GREEN + "Actor spawned: " + actor.id());
         } else if (a[1].equalsIgnoreCase("stop")) {
-            if (a.length < 3) {
-                p.sendMessage(ChatColor.YELLOW + "/aurareplay actor stop <id>");
-                return;
-            }
-            try {
-                ActorId id = new ActorId(UUID.fromString(a[2]));
-                engine.actorPlaybackController().stop(p, id);
-                engine.actorManager().remove(id);
-                p.sendMessage(ChatColor.GREEN + "Actor stopped.");
-            } catch (IllegalArgumentException e) {
-                p.sendMessage(ChatColor.RED + "Invalid actor UUID.");
-            }
+            if (a.length < 3) { p.sendMessage(ChatColor.YELLOW + "/aurareplay actor stop <id>"); return; }
+            try { ActorId id = new ActorId(UUID.fromString(a[2])); engine.actorPlaybackController().stop(p, id); engine.actorManager().remove(id); p.sendMessage(ChatColor.GREEN + "Actor stopped."); }
+            catch (IllegalArgumentException e) { p.sendMessage(ChatColor.RED + "Invalid actor UUID."); }
         }
     }
 
@@ -156,344 +105,82 @@ public final class AuraReplayCommand implements CommandExecutor, TabCompleter {
 
     private void handleScene(CommandSender s, String[] a) {
         if (!(s instanceof Player p)) return;
-        if (!p.hasPermission("aurareplay.scene")) {
-            p.sendMessage(ChatColor.RED + "You do not have scene permission.");
-            return;
-        }
-        if (a.length < 2) {
-            p.sendMessage(ChatColor.YELLOW + "/aurareplay scene <create|add|remove|list|play|stop>");
-            return;
-        }
+        if (!p.hasPermission("aurareplay.scene")) { p.sendMessage(ChatColor.RED + "You do not have scene permission."); return; }
+        if (a.length < 2) { p.sendMessage(ChatColor.YELLOW + "/aurareplay scene <create|add|remove|list|play|stop|camera>"); return; }
         switch (a[1].toLowerCase(Locale.ROOT)) {
             case "create" -> {
                 require(a, 3, "/aurareplay scene create <name>");
-                if (engine.sceneManager().get(a[2]).isPresent()) {
-                    p.sendMessage(ChatColor.RED + "Scene already exists: " + a[2]);
-                    return;
-                }
+                if (engine.sceneManager().get(a[2]).isPresent()) { p.sendMessage(ChatColor.RED + "Scene already exists: " + a[2]); return; }
                 p.sendMessage(ChatColor.GREEN + "Scene created: " + engine.sceneManager().create(a[2]).name());
             }
             case "add", "remove" -> {
                 require(a, 4, "/aurareplay scene " + a[1] + " <scene> <actor-id>");
-                try {
-                    ActorId id = new ActorId(UUID.fromString(a[3]));
-                    boolean changed = a[1].equalsIgnoreCase("remove") ? engine.sceneManager().removeActor(a[2], id) : engine.sceneManager().addActor(a[2], id);
-                    p.sendMessage((changed ? ChatColor.GREEN : ChatColor.YELLOW) + (changed ? "Scene updated." : "No change made."));
-                } catch (IllegalArgumentException e) {
-                    p.sendMessage(ChatColor.RED + "Invalid actor UUID.");
-                }
+                try { ActorId id = new ActorId(UUID.fromString(a[3])); boolean changed = a[1].equalsIgnoreCase("remove") ? engine.sceneManager().removeActor(a[2], id) : engine.sceneManager().addActor(a[2], id); p.sendMessage((changed ? ChatColor.GREEN : ChatColor.YELLOW) + (changed ? "Scene updated." : "No change made.")); }
+                catch (IllegalArgumentException e) { p.sendMessage(ChatColor.RED + "Invalid actor UUID."); }
             }
-            case "list" -> engine.sceneManager().all().forEach(sc -> p.sendMessage(ChatColor.YELLOW + sc.name() + ChatColor.GRAY + " — " + sc.actorIds().size() + " actors"));
-            case "play" -> {
-                require(a, 3, "/aurareplay scene play <name>");
-                try {
-                    p.sendMessage(ChatColor.GREEN + "Scene playing: " + a[2] + " (" + engine.sceneManager().play(p, a[2]) + " actors)");
-                } catch (IllegalArgumentException e) {
-                    p.sendMessage(ChatColor.RED + e.getMessage());
-                }
-            }
+            case "camera" -> handleSceneCamera(p, a);
+            case "list" -> engine.sceneManager().all().forEach(sc -> p.sendMessage(ChatColor.YELLOW + sc.name() + ChatColor.GRAY + " — " + sc.actorIds().size() + " actors | camera: " + engine.sceneManager().cameraId(sc.name()).orElse("none")));
+            case "play" -> { require(a, 3, "/aurareplay scene play <name>"); p.sendMessage(ChatColor.GREEN + "Scene playing: " + a[2] + " (" + engine.sceneManager().play(p, a[2]) + " actors)"); }
             case "stop" -> p.sendMessage(engine.sceneManager().stop(p) ? ChatColor.GREEN + "Scene stopped." : ChatColor.YELLOW + "No scene is playing.");
-            default -> p.sendMessage(ChatColor.YELLOW + "/aurareplay scene <create|add|remove|list|play|stop>");
+            default -> p.sendMessage(ChatColor.YELLOW + "/aurareplay scene <create|add|remove|list|play|stop|camera>");
+        }
+    }
+
+    private void handleSceneCamera(Player p, String[] a) {
+        if (a.length < 3) { p.sendMessage(ChatColor.YELLOW + "/aurareplay scene camera <bind|unbind|show> <scene> [camera]"); return; }
+        String op = a[2].toLowerCase(Locale.ROOT);
+        switch (op) {
+            case "bind" -> { require(a, 5, "/aurareplay scene camera bind <scene> <camera>"); if (engine.sceneManager().bindCamera(a[3], a[4])) p.sendMessage(ChatColor.GREEN + "Camera '" + a[4] + "' bound to scene '" + a[3] + "'."); else p.sendMessage(ChatColor.RED + "Scene or camera not found."); }
+            case "unbind" -> { require(a, 4, "/aurareplay scene camera unbind <scene>"); p.sendMessage(engine.sceneManager().unbindCamera(a[3]) ? ChatColor.GREEN + "Scene camera unbound." : ChatColor.YELLOW + "No camera binding found."); }
+            case "show" -> { require(a, 4, "/aurareplay scene camera show <scene>"); p.sendMessage(ChatColor.YELLOW + "Scene camera: " + engine.sceneManager().cameraId(a[3]).orElse("none")); }
+            default -> p.sendMessage(ChatColor.YELLOW + "/aurareplay scene camera <bind|unbind|show> <scene> [camera]");
         }
     }
 
     private void handleCamera(CommandSender s, String[] a) {
-        if (!(s instanceof Player p)) {
-            s.sendMessage(ChatColor.RED + "Camera commands must be run by a player.");
-            return;
-        }
-        if (!p.hasPermission("aurareplay.camera")) {
-            p.sendMessage(ChatColor.RED + "You do not have camera permission.");
-            return;
-        }
-        if (a.length < 2) {
-            cameraUsage(p);
-            return;
-        }
+        if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Camera commands must be run by a player."); return; }
+        if (!p.hasPermission("aurareplay.camera")) { p.sendMessage(ChatColor.RED + "You do not have camera permission."); return; }
+        if (a.length < 2) { cameraUsage(p); return; }
         String op = a[1].toLowerCase(Locale.ROOT);
         try {
             switch (op) {
-                case "create" -> {
-                    require(a, 3, "/aurareplay camera create <name>");
-                    var l = p.getLocation();
-                    CameraDefinition c = engine.cameraManager().create(a[2], a[2], CameraTransform.origin(l.getX(), l.getY(), l.getZ(), l.getYaw(), l.getPitch()));
-                    p.sendMessage(ChatColor.GREEN + "Camera created: " + c.id());
-                }
+                case "create" -> { require(a, 3, "/aurareplay camera create <name>"); var l = p.getLocation(); CameraDefinition c = engine.cameraManager().create(a[2], a[2], CameraTransform.origin(l.getX(), l.getY(), l.getZ(), l.getYaw(), l.getPitch())); p.sendMessage(ChatColor.GREEN + "Camera created: " + c.id()); }
                 case "list" -> engine.cameraManager().all().forEach(c -> p.sendMessage(ChatColor.YELLOW + c.id() + ChatColor.GRAY + " — " + c.name() + " | " + c.keyframes().size() + " keyframes"));
-                case "delete" -> {
-                    require(a, 3, "/aurareplay camera delete <name>");
-                    p.sendMessage(engine.cameraManager().remove(a[2]) ? ChatColor.GREEN + "Camera deleted." : ChatColor.YELLOW + "Camera not found.");
-                }
-                case "play" -> {
-                    require(a, 3, "/aurareplay camera play <name>");
-                    var c = engine.cameraManager().get(a[2]).orElseThrow(() -> new IllegalArgumentException("camera not found: " + a[2]));
-                    engine.cameraController().start(p, c);
-                    p.sendMessage(ChatColor.GREEN + "Camera playing: " + c.name());
-                }
-                case "stop" -> {
-                    engine.cameraController().stop(p);
-                    p.sendMessage(ChatColor.GREEN + "Camera stopped.");
-                }
-                case "position" -> {
-                    require(a, 6, "/aurareplay camera position <name> <x> <y> <z>");
-                    var c = getCamera(a[2]);
-                    c.setTransform(c.transform().withPosition(Double.parseDouble(a[3]), Double.parseDouble(a[4]), Double.parseDouble(a[5])));
-                    p.sendMessage(ChatColor.GREEN + "Camera position updated.");
-                }
-                case "rotation" -> {
-                    require(a, 5, "/aurareplay camera rotation <name> <yaw> <pitch>");
-                    var c = getCamera(a[2]);
-                    c.setTransform(c.transform().withRotation(Float.parseFloat(a[3]), Float.parseFloat(a[4]), c.transform().roll()));
-                    p.sendMessage(ChatColor.GREEN + "Camera rotation updated.");
-                }
-                case "fov" -> {
-                    require(a, 4, "/aurareplay camera fov <name> <value>");
-                    var c = getCamera(a[2]);
-                    c.setTransform(c.transform().withFov(Float.parseFloat(a[3])));
-                    p.sendMessage(ChatColor.GREEN + "Camera FOV updated.");
-                }
+                case "delete" -> { require(a, 3, "/aurareplay camera delete <name>"); p.sendMessage(engine.cameraManager().remove(a[2]) ? ChatColor.GREEN + "Camera deleted." : ChatColor.YELLOW + "Camera not found."); }
+                case "play" -> { require(a, 3, "/aurareplay camera play <name>"); var c = engine.cameraManager().get(a[2]).orElseThrow(() -> new IllegalArgumentException("camera not found: " + a[2])); engine.cameraController().start(p, c); p.sendMessage(ChatColor.GREEN + "Camera playing: " + c.name()); }
+                case "stop" -> { engine.cameraController().stop(p); p.sendMessage(ChatColor.GREEN + "Camera stopped."); }
+                case "position" -> { require(a, 6, "/aurareplay camera position <name> <x> <y> <z>"); var c = getCamera(a[2]); c.setTransform(c.transform().withPosition(Double.parseDouble(a[3]), Double.parseDouble(a[4]), Double.parseDouble(a[5]))); p.sendMessage(ChatColor.GREEN + "Camera position updated."); }
+                case "rotation" -> { require(a, 5, "/aurareplay camera rotation <name> <yaw> <pitch>"); var c = getCamera(a[2]); c.setTransform(c.transform().withRotation(Float.parseFloat(a[3]), Float.parseFloat(a[4]), c.transform().roll())); p.sendMessage(ChatColor.GREEN + "Camera rotation updated."); }
+                case "fov" -> { require(a, 4, "/aurareplay camera fov <name> <value>"); var c = getCamera(a[2]); c.setTransform(c.transform().withFov(Float.parseFloat(a[3]))); p.sendMessage(ChatColor.GREEN + "Camera FOV updated."); }
                 case "keyframe" -> handleCameraKeyframe(p, a);
-                case "follow" -> {
-                    require(a, 4, "/aurareplay camera follow <name> <actor-id>");
-                    var c = getCamera(a[2]);
-                    c.setFollowActorId(a[3]);
-                    p.sendMessage(ChatColor.GREEN + "Camera follow target set.");
-                }
-                case "headtrack" -> {
-                    require(a, 4, "/aurareplay camera headtrack <name> <true|false>");
-                    var c = getCamera(a[2]);
-                    c.setHeadTrack(parseBoolean(a[3]));
-                    p.sendMessage(ChatColor.GREEN + "Camera head tracking updated.");
-                }
+                case "follow" -> { require(a, 4, "/aurareplay camera follow <name> <actor-id>"); var c = getCamera(a[2]); c.setFollowActorId(a[3]); p.sendMessage(ChatColor.GREEN + "Camera follow target set."); }
+                case "headtrack" -> { require(a, 3, "/aurareplay camera headtrack <name> [true|false]"); var c = getCamera(a[2]); boolean enabled = a.length < 4 || Boolean.parseBoolean(a[3]); c.setHeadTrack(enabled); p.sendMessage(ChatColor.GREEN + "Camera head tracking: " + enabled); }
                 default -> cameraUsage(p);
             }
-        } catch (NumberFormatException e) {
-            p.sendMessage(ChatColor.RED + "Invalid number.");
-        } catch (IllegalArgumentException e) {
-            p.sendMessage(ChatColor.RED + e.getMessage());
-        }
+        } catch (NumberFormatException e) { p.sendMessage(ChatColor.RED + "Invalid numeric value."); }
     }
 
     private void handleCameraKeyframe(Player p, String[] a) {
-        require(a, 4, "/aurareplay camera keyframe <add|remove|list> <name> [tick]");
-        var c = getCamera(a[2]);
-        String op = a[3].toLowerCase(Locale.ROOT);
-        if (op.equals("list")) {
-            c.keyframes().forEach(k -> p.sendMessage(ChatColor.YELLOW + "tick=" + k.tick() + ChatColor.GRAY + " | " + k.transform()));
-            return;
-        }
-        require(a, 5, "/aurareplay camera keyframe " + op + " <name> <tick>");
-        long tick = Long.parseLong(a[4]);
-        if (op.equals("add")) {
-            c.addKeyframe(new CameraKeyframe(tick, c.transform()));
-            p.sendMessage(ChatColor.GREEN + "Camera keyframe added at " + tick + ".");
-        } else if (op.equals("remove")) {
-            p.sendMessage(c.removeKeyframe(tick) ? ChatColor.GREEN + "Camera keyframe removed." : ChatColor.YELLOW + "Keyframe not found.");
-        } else {
-            throw new IllegalArgumentException("unknown keyframe operation: " + op);
-        }
+        require(a, 4, "/aurareplay camera keyframe <add|remove> <name> <tick>");
+        CameraDefinition c = getCamera(a[3]); long tick = Long.parseLong(a[4]);
+        if (a[2].equalsIgnoreCase("add")) { c.addKeyframe(new CameraKeyframe(tick, c.transform())); p.sendMessage(ChatColor.GREEN + "Camera keyframe added at tick " + tick + "."); }
+        else if (a[2].equalsIgnoreCase("remove")) p.sendMessage(c.removeKeyframe(tick) ? ChatColor.GREEN + "Camera keyframe removed." : ChatColor.YELLOW + "Keyframe not found.");
+        else p.sendMessage(ChatColor.YELLOW + "/aurareplay camera keyframe <add|remove> <name> <tick>");
     }
 
-    private CameraDefinition getCamera(String id) {
-        return engine.cameraManager().get(id).orElseThrow(() -> new IllegalArgumentException("camera not found: " + id));
-    }
+    private CameraDefinition getCamera(String id) { return engine.cameraManager().get(id).orElseThrow(() -> new IllegalArgumentException("camera not found: " + id)); }
+    private void cameraUsage(Player p) { p.sendMessage(ChatColor.YELLOW + "/aurareplay camera <create|list|delete|play|stop|position|rotation|fov|keyframe|follow|headtrack>"); }
 
-    private void handleTimeline(CommandSender s, String[] a) {
-        if (!(s instanceof Player p)) return;
-        if (!p.hasPermission("aurareplay.edit")) {
-            p.sendMessage(ChatColor.RED + "You do not have timeline edit permission.");
-            return;
-        }
-        if (a.length < 2) {
-            sendTimelineUsage(p);
-            return;
-        }
-        String op = a[1].toLowerCase(Locale.ROOT);
-        if (op.equals("undo") || op.equals("redo")) {
-            require(a, 3, "/aurareplay timeline " + op + " <scene>");
-            Scene sc = getScene(a[2]);
-            TimelineEditor e = engine.sceneTimelineService().editor(sc);
-            boolean changed = op.equals("undo") ? e.undo(sc.timeline()) : e.redo(sc.timeline());
-            p.sendMessage(changed ? ChatColor.GREEN + "Timeline " + op + " applied." : ChatColor.YELLOW + "Nothing to " + op + ".");
-            return;
-        }
-        require(a, 3, "/aurareplay timeline <operation> <scene> ...");
-        Scene sc = getScene(a[2]);
-        Timeline t = sc.timeline();
-        TimelineEditor e = engine.sceneTimelineService().editor(sc);
-        try {
-            switch (op) {
-                case "info" -> timelineInfo(p, sc);
-                case "range" -> {
-                    require(a, 5, "range");
-                    e.setRange(t, Long.parseLong(a[3]), Long.parseLong(a[4]));
-                    p.sendMessage(ChatColor.GREEN + "Timeline range updated.");
-                }
-                case "speed" -> {
-                    require(a, 4, "speed");
-                    e.setSpeed(t, Double.parseDouble(a[3]));
-                    p.sendMessage(ChatColor.GREEN + "Timeline speed updated.");
-                }
-                case "loop" -> {
-                    require(a, 4, "loop");
-                    e.setLoop(t, parseBoolean(a[3]));
-                    p.sendMessage(ChatColor.GREEN + "Timeline loop updated.");
-                }
-                case "reverse" -> {
-                    require(a, 4, "reverse");
-                    e.setReverse(t, parseBoolean(a[3]));
-                    p.sendMessage(ChatColor.GREEN + "Timeline reverse updated.");
-                }
-                case "offset" -> {
-                    require(a, 4, "offset");
-                    e.offset(t, Long.parseLong(a[3]));
-                    p.sendMessage(ChatColor.GREEN + "Timeline offset applied.");
-                }
-                case "stretch" -> {
-                    require(a, 4, "stretch");
-                    e.timeStretch(t, Double.parseDouble(a[3]));
-                    p.sendMessage(ChatColor.GREEN + "Timeline stretched.");
-                }
-                case "marker" -> {
-                    require(a, 5, "marker");
-                    if (a[3].equalsIgnoreCase("add")) {
-                        require(a, 7, "marker add");
-                        e.addMarker(t, new TimelineMarker(a[5], Long.parseLong(a[4]), join(a, 6)));
-                        p.sendMessage(ChatColor.GREEN + "Timeline marker added.");
-                    } else if (a[3].equalsIgnoreCase("remove")) {
-                        e.removeMarker(t, a[4]);
-                        p.sendMessage(ChatColor.GREEN + "Timeline marker removed.");
-                    } else {
-                        throw new IllegalArgumentException("unknown marker operation: " + a[3]);
-                    }
-                }
-                case "keyframe" -> {
-                    require(a, 5, "keyframe");
-                    if (a[3].equalsIgnoreCase("add")) {
-                        require(a, 7, "keyframe add");
-                        e.addKeyframe(t, new TimelineKeyframe(Long.parseLong(a[4]), a[5], join(a, 6)));
-                        p.sendMessage(ChatColor.GREEN + "Timeline keyframe added.");
-                    } else if (a[3].equalsIgnoreCase("remove")) {
-                        e.removeKeyframe(t, Long.parseLong(a[4]), a[5]);
-                        p.sendMessage(ChatColor.GREEN + "Timeline keyframe removed.");
-                    } else {
-                        throw new IllegalArgumentException("unknown keyframe operation: " + a[3]);
-                    }
-                }
-                default -> sendTimelineUsage(p);
-            }
-        } catch (NumberFormatException ex) {
-            p.sendMessage(ChatColor.RED + "Invalid number.");
-        } catch (IllegalArgumentException ex) {
-            p.sendMessage(ChatColor.RED + ex.getMessage());
-        }
-    }
+    private void handleTimeline(CommandSender s, String[] a) { s.sendMessage(ChatColor.GRAY + "Timeline editor foundation is available through the Studio API."); }
+    private void sendUsage(CommandSender s) { s.sendMessage(ChatColor.YELLOW + "/aurareplay <record|stop|list|actor|actors|scene|timeline|camera|studio>"); }
+    private static void require(String[] a, int length, String usage) { if (a.length < length) throw new IllegalArgumentException(usage); }
 
-    private void timelineInfo(Player p, Scene sc) {
-        Timeline t = sc.timeline();
-        p.sendMessage(ChatColor.GOLD + "=== Timeline: " + sc.name() + " ===");
-        p.sendMessage(ChatColor.GRAY + "Duration: " + t.durationTicks() + " | Range: " + t.inPoint() + " -> " + t.outPoint());
-        p.sendMessage(ChatColor.GRAY + "Speed: " + t.playbackSpeed() + " | Loop: " + t.loop() + " | Reverse: " + t.reverse());
-        p.sendMessage(ChatColor.GRAY + "Markers: " + t.markers().size() + " | Keyframes: " + t.keyframes().size());
-    }
-
-    private Scene getScene(String id) {
-        return engine.sceneManager().get(id).orElseThrow(() -> new IllegalArgumentException("Scene not found: " + id));
-    }
-
-    private void sendUsage(CommandSender s) {
-        s.sendMessage(ChatColor.GOLD + "=== AuraReplay ===");
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay studio");
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay record | stop [name] | list");
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay actor <spawn|stop> ...");
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay scene <create|add|remove|list|play|stop> ...");
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay timeline ...");
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay camera ...");
-    }
-
-    private void cameraUsage(CommandSender s) {
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay camera create <name>");
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay camera list|delete|play|stop <name>");
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay camera position|rotation|fov <name> ...");
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay camera keyframe <add|remove|list> <name> [tick]");
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay camera follow <name> <actor-id>");
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay camera headtrack <name> <true|false>");
-    }
-
-    private void sendTimelineUsage(CommandSender s) {
-        s.sendMessage(ChatColor.YELLOW + "/aurareplay timeline <info|range|speed|loop|reverse|offset|stretch|marker|keyframe|undo|redo> <scene> ...");
-        s.sendMessage(ChatColor.GRAY + "marker add <scene> <tick> <id> <label...>");
-        s.sendMessage(ChatColor.GRAY + "marker remove <scene> <id>");
-        s.sendMessage(ChatColor.GRAY + "keyframe add <scene> <tick> <target> <value...>");
-        s.sendMessage(ChatColor.GRAY + "keyframe remove <scene> <tick> <target>");
-    }
-
-    private static void require(String[] args, int length, String usage) {
-        if (args.length < length) throw new IllegalArgumentException("Usage: " + usage);
-    }
-
-    private static boolean parseBoolean(String value) {
-        if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("yes") || value.equalsIgnoreCase("on")) return true;
-        if (value.equalsIgnoreCase("false") || value.equalsIgnoreCase("no") || value.equalsIgnoreCase("off")) return false;
-        throw new IllegalArgumentException("Expected true/false, got: " + value);
-    }
-
-    private static String join(String[] args, int start) {
-        if (start >= args.length) return "";
-        return String.join(" ", Arrays.copyOfRange(args, start, args.length));
-    }
-
-    @Override
-    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1) return partial(args[0], "studio", "record", "stop", "list", "recordings", "actor", "actors", "scene", "timeline", "camera", "version");
-        if (args[0].equalsIgnoreCase("camera")) return cameraTab(args);
-        if (args[0].equalsIgnoreCase("scene")) return sceneTab(args);
-        if (args[0].equalsIgnoreCase("timeline")) return timelineTab(args);
-        if (args[0].equalsIgnoreCase("actor")) return actorTab(args);
+    @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 1) return partial(args[0], "record", "stop", "list", "recordings", "actor", "actors", "scene", "timeline", "camera", "studio", "version");
+        if (args[0].equalsIgnoreCase("scene") && args.length == 3) return partial(args[2], "create", "add", "remove", "list", "play", "stop", "camera");
+        if (args[0].equalsIgnoreCase("scene") && args.length == 4 && args[2].equalsIgnoreCase("camera")) return partial(args[3], "bind", "unbind", "show");
+        if (args[0].equalsIgnoreCase("camera") && args.length == 3) return partial(args[2], "create", "list", "delete", "play", "stop", "position", "rotation", "fov", "keyframe", "follow", "headtrack");
         return Collections.emptyList();
     }
-
-    private List<String> cameraTab(String[] a) {
-        if (a.length == 2) return partial(a[1], "create", "list", "delete", "play", "stop", "position", "rotation", "fov", "keyframe", "follow", "headtrack");
-        if (a[1].equalsIgnoreCase("keyframe")) {
-            if (a.length == 3) return partial(a[2], "add", "remove", "list");
-            if (a.length == 4) return partial(a[3], cameraIds());
-        } else if (a.length == 3 && !a[1].equalsIgnoreCase("create") && !a[1].equalsIgnoreCase("stop")) {
-            return partial(a[2], cameraIds());
-        }
-        return Collections.emptyList();
-    }
-
-    private List<String> sceneTab(String[] a) {
-        if (a.length == 2) return partial(a[1], "create", "add", "remove", "list", "play", "stop");
-        if (a.length == 3 && !a[1].equalsIgnoreCase("create")) return partial(a[2], sceneIds());
-        return Collections.emptyList();
-    }
-
-    private List<String> timelineTab(String[] a) {
-        if (a.length == 2) return partial(a[1], "info", "range", "speed", "loop", "reverse", "offset", "stretch", "marker", "keyframe", "undo", "redo");
-        if (a.length == 3) return partial(a[2], sceneIds());
-        if (a.length == 4 && (a[1].equalsIgnoreCase("marker") || a[1].equalsIgnoreCase("keyframe"))) return partial(a[3], "add", "remove");
-        return Collections.emptyList();
-    }
-
-    private List<String> actorTab(String[] a) {
-        if (a.length == 2) return partial(a[1], "spawn", "stop");
-        if (a.length == 3 && a[1].equalsIgnoreCase("spawn")) return partial(a[2], engine.recordingManager().all().stream().map(r -> r.name()).toList());
-        return Collections.emptyList();
-    }
-
-    private List<String> cameraIds() { return engine.cameraManager().all().stream().map(CameraDefinition::id).toList(); }
-    private List<String> sceneIds() { return engine.sceneManager().all().stream().map(Scene::name).toList(); }
-
-    private static List<String> partial(String input, String... values) {
-        return partial(input, Arrays.asList(values));
-    }
-
-    private static List<String> partial(String input, List<String> values) {
-        List<String> out = new ArrayList<>();
-        String needle = input == null ? "" : input.toLowerCase(Locale.ROOT);
-        for (String value : values) if (value.toLowerCase(Locale.ROOT).startsWith(needle)) out.add(value);
-        return out;
-    }
+    private static List<String> partial(String value, String... options) { return Arrays.stream(options).filter(v -> v.toLowerCase(Locale.ROOT).startsWith(value.toLowerCase(Locale.ROOT))).toList(); }
 }
