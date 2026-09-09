@@ -17,15 +17,26 @@ public final class StudioListener implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (!controller.isStudioInventory(event.getView().getTopInventory())) return;
         event.setCancelled(true);
-        if (event.getClickedInventory() == event.getView().getTopInventory()) controller.click(player,event.getRawSlot());
+        if (event.getClickedInventory() == event.getView().getTopInventory()) {
+            controller.click(player, event.getRawSlot());
+        }
     }
 
     @EventHandler
     public void onClose(InventoryCloseEvent event) {
         if (!(event.getPlayer() instanceof Player player)) return;
         if (!controller.isStudioInventory(event.getInventory())) return;
-        Bukkit.getScheduler().runTask(controllerPlugin(player),()->{
-            if (!player.isOnline() || !controller.isStudioInventory(player.getOpenInventory().getTopInventory())) controller.close(player);
+        Bukkit.getScheduler().runTask(controllerPlugin(player), () -> {
+            if (!player.isOnline()) {
+                controller.close(player);
+                return;
+            }
+            // Inventory navigation calls openInventory() synchronously. By the time
+            // this close callback runs, the replacement Studio inventory is normally
+            // already open; only close the session when the viewer actually left Studio.
+            if (!controller.isStudioInventory(player.getOpenInventory().getTopInventory())) {
+                controller.close(player);
+            }
         });
     }
 
