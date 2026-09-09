@@ -14,7 +14,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,101 +23,60 @@ public final class MotionStudioService {
     private final StudioController controller;
     private final Map<UUID, String> selectedLayers = new ConcurrentHashMap<>();
 
-    public MotionStudioService(StudioController controller) {
-        this.controller = controller;
-    }
+    public MotionStudioService(StudioController controller) { this.controller = controller; }
 
     public void open(Player player) {
         ActorDefinition actor = actor(player);
-        if (actor == null) {
-            controller.click(player, 26);
-            return;
-        }
+        if (actor == null) { controller.click(player, 26); return; }
         selectedLayers.remove(player.getUniqueId());
         renderLayers(player, actor);
     }
 
     public void click(Player player, int slot) {
         ActorDefinition actor = actor(player);
-        if (actor == null) {
-            controller.click(player, 26);
-            return;
-        }
+        if (actor == null) { controller.click(player, 26); return; }
         String selected = selectedLayers.get(player.getUniqueId());
         if (selected == null) {
-            if (slot == 26) {
-                controller.click(player, 26);
-                return;
-            }
+            if (slot == 26) { controller.click(player, 26); return; }
             if (slot >= 0 && slot < actor.motionStack().size()) {
-                selectedLayers.put(player.getUniqueId(), actor.motionStack().layers().get(slot).id());
-                renderEditor(player, actor, actor.motionStack().layers().get(slot));
+                MotionLayer layer = actor.motionStack().layers().get(slot);
+                selectedLayers.put(player.getUniqueId(), layer.id());
+                renderEditor(player, actor, layer);
                 return;
             }
-            if (slot >= 18 && slot <= 25) {
-                addLayer(player, actor, typeForSlot(slot));
-                return;
-            }
+            if (slot >= 18 && slot <= 25) { addLayer(player, actor, typeForSlot(slot)); }
             return;
         }
 
-        MotionLayer layer = find(actor.motionStack(), selected);
-        if (layer == null) {
-            selectedLayers.remove(player.getUniqueId());
-            renderLayers(player, actor);
-            return;
-        }
-        if (slot == 26) {
-            selectedLayers.remove(player.getUniqueId());
-            renderLayers(player, actor);
-            return;
-        }
         MotionStack stack = actor.motionStack();
-        if (slot == 20) {
-            stack.setEnabled(layer.id(), !layer.enabled());
-        } else if (slot == 21) {
+        MotionLayer layer = find(stack, selected);
+        if (layer == null) { selectedLayers.remove(player.getUniqueId()); renderLayers(player, actor); return; }
+        if (slot == 26) { selectedLayers.remove(player.getUniqueId()); renderLayers(player, actor); return; }
+        if (slot == 20) stack.setEnabled(layer.id(), !layer.enabled());
+        else if (slot == 21) {
             stack.remove(layer.id());
             selectedLayers.remove(player.getUniqueId());
             player.sendMessage(ChatColor.YELLOW + "Removed motion layer: " + layer.id());
             renderLayers(player, actor);
             return;
-        } else if (slot == 22) {
-            move(stack, layer.id(), -1);
-        } else if (slot == 23) {
-            move(stack, layer.id(), 1);
-        } else if (slot == 24) {
-            stack.replace(adjust(layer, false));
-        } else if (slot == 25) {
-            stack.replace(adjust(layer, true));
-        } else if (slot == 10) {
-            stack.replace(adjustRange(layer, -5, 0));
-        } else if (slot == 11) {
-            stack.replace(adjustRange(layer, 5, 0));
-        } else if (slot == 12) {
-            stack.replace(adjustRange(layer, 0, -5));
-        } else if (slot == 13) {
-            stack.replace(adjustRange(layer, 0, 5));
-        } else if (slot == 14) {
-            stack.replace(adjustComponent(layer, -1));
-        } else if (slot == 15) {
-            stack.replace(adjustComponent(layer, 1));
-        } else if (slot == 16) {
-            stack.replace(adjustValue(layer, -1));
-        } else if (slot == 17) {
-            stack.replace(adjustValue(layer, 1));
-        }
+        } else if (slot == 22) move(stack, layer.id(), -1);
+        else if (slot == 23) move(stack, layer.id(), 1);
+        else if (slot == 24) stack.replace(adjust(layer, false));
+        else if (slot == 25) stack.replace(adjust(layer, true));
+        else if (slot == 10) stack.replace(adjustRange(layer, -5, 0));
+        else if (slot == 11) stack.replace(adjustRange(layer, 5, 0));
+        else if (slot == 12) stack.replace(adjustRange(layer, 0, -5));
+        else if (slot == 13) stack.replace(adjustRange(layer, 0, 5));
+        else if (slot == 14) stack.replace(adjustComponent(layer, -1));
+        else if (slot == 15) stack.replace(adjustComponent(layer, 1));
+        else if (slot == 16) stack.replace(adjustValue(layer, -1));
+        else if (slot == 17) stack.replace(adjustValue(layer, 1));
         MotionLayer updated = find(stack, selected);
-        if (updated == null) {
-            selectedLayers.remove(player.getUniqueId());
-            renderLayers(player, actor);
-        } else {
-            renderEditor(player, actor, updated);
-        }
+        if (updated == null) { selectedLayers.remove(player.getUniqueId()); renderLayers(player, actor); }
+        else renderEditor(player, actor, updated);
     }
 
-    public void close(Player player) {
-        selectedLayers.remove(player.getUniqueId());
-    }
+    public void close(Player player) { selectedLayers.remove(player.getUniqueId()); }
 
     private void addLayer(Player player, ActorDefinition actor, MotionLayer.Type type) {
         String id = uniqueId(actor.motionStack(), type.name().toLowerCase());
@@ -160,8 +118,7 @@ public final class MotionStudioService {
     }
 
     private static String uniqueId(MotionStack stack, String base) {
-        String id = base;
-        int n = 2;
+        String id = base; int n = 2;
         while (find(stack, id) != null) id = base + "-" + n++;
         return id;
     }
@@ -192,16 +149,14 @@ public final class MotionStudioService {
     }
 
     private static MotionLayer adjustValue(MotionLayer l, double delta) {
-        double value = l.value() + delta * (l.type() == MotionLayer.Type.SPEED_MULTIPLIER || l.type() == MotionLayer.Type.SCALE || l.type() == MotionLayer.Type.RETIME ? .1 : 1);
-        if (l.type() == MotionLayer.Type.SPEED_MULTIPLIER || l.type() == MotionLayer.Type.SCALE || l.type() == MotionLayer.Type.RETIME) value = Math.max(.1, value);
+        boolean scaled = l.type() == MotionLayer.Type.SPEED_MULTIPLIER || l.type() == MotionLayer.Type.SCALE || l.type() == MotionLayer.Type.RETIME;
+        double value = l.value() + delta * (scaled ? .1 : 1);
+        if (scaled) value = Math.max(.1, value);
         if (l.type() == MotionLayer.Type.BLEND) value = Math.max(.01, Math.min(1, value));
         return copy(l, l.startTick(), l.endTick(), l.x(), l.y(), l.z(), l.yaw(), l.pitch(), l.roll(), value);
     }
 
-    private static MotionLayer adjust(MotionLayer l, boolean positive) {
-        double d = positive ? 1 : -1;
-        return adjustValue(l, d);
-    }
+    private static MotionLayer adjust(MotionLayer l, boolean positive) { return adjustValue(l, positive ? 1 : -1); }
 
     private static MotionLayer copy(MotionLayer l, long start, long end, double x, double y, double z, float yaw, float pitch, float roll, double value) {
         return new MotionLayer(l.id(), l.type(), x, y, z, yaw, pitch, roll, value, start, end, l.enabled());
@@ -212,8 +167,7 @@ public final class MotionStudioService {
         var layers = actor.motionStack().layers();
         for (int i = 0; i < Math.min(18, layers.size()); i++) {
             MotionLayer l = layers.get(i);
-            item(inventory, i, l.enabled() ? Material.LIME_DYE : Material.GRAY_DYE, (i + 1) + ". " + l.type(),
-                    "ID: " + l.id(), "Range: " + l.startTick() + " → " + l.endTick(), "Click to edit");
+            item(inventory, i, l.enabled() ? Material.LIME_DYE : Material.GRAY_DYE, (i + 1) + ". " + l.type(), "ID: " + l.id(), "Range: " + l.startTick() + " → " + l.endTick(), "Click to edit");
         }
         item(inventory, 18, Material.COMPASS, "+ Position Offset", "Add editable position layer");
         item(inventory, 19, Material.CLOCK, "+ Rotation Offset", "Add editable rotation layer");
@@ -221,8 +175,8 @@ public final class MotionStudioService {
         item(inventory, 21, Material.SPECTRAL_ARROW, "+ Time Offset", "Add timeline offset layer");
         item(inventory, 22, Material.REPEATER, "+ Speed", "Add speed multiplier layer");
         item(inventory, 23, Material.CLOCK, "+ Reverse", "Add reverse layer");
-        item(inventory, 24, Material.MIRROR, "+ Mirror X", "Add X mirror layer");
-        item(inventory, 25, Material.MIRROR, "+ Mirror Z", "Add Z mirror layer");
+        item(inventory, 24, Material.OBSERVER, "+ Mirror X", "Add X mirror layer");
+        item(inventory, 25, Material.OBSERVER, "+ Mirror Z", "Add Z mirror layer");
         item(inventory, 26, Material.ARROW, "Back", "Return to actor motion");
         player.openInventory(inventory);
     }
