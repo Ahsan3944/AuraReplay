@@ -1,12 +1,14 @@
 package com.ultraop.aurareplay.recording;
 
 import com.ultraop.aurareplay.recording.snapshot.EntitySnapshot;
+import com.ultraop.aurareplay.recording.snapshot.EquipmentSnapshot;
 import com.ultraop.aurareplay.recording.snapshot.TickSnapshot;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,15 +49,18 @@ public final class TickRecorder {
         }
     }
 
+    /** Must execute on the Paper main thread. */
     private void captureTick() {
         if (!recording) return;
 
-        var snapshots = tracked.values().stream()
-                .filter(Entity::isValid)
-                .map(this::snapshot)
-                .toList();
+        var snapshots = new ArrayList<EntitySnapshot>(tracked.size());
+        for (Entity entity : tracked.values()) {
+            if (entity.isValid()) {
+                snapshots.add(snapshot(entity));
+            }
+        }
 
-        buffer.append(new TickSnapshot(tick++, snapshots));
+        buffer.append(new TickSnapshot(tick++, List.copyOf(snapshots)));
     }
 
     private EntitySnapshot snapshot(Entity entity) {
@@ -79,7 +84,9 @@ public final class TickRecorder {
                 location.getX(), location.getY(), location.getZ(),
                 location.getYaw(), location.getPitch(),
                 velocity.getX(), velocity.getY(), velocity.getZ(),
-                flags
+                flags,
+                EquipmentSnapshot.capture(entity),
+                true
         );
     }
 
