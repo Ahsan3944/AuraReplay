@@ -64,7 +64,7 @@ class RecordingBinaryCodecTest {
         assertEquals(22, decoded.frames().size());
         assertEquals(21.0, decoded.frames().get(21).entities().getFirst().x());
         assertEquals(111.0f, decoded.frames().get(21).entities().getFirst().yaw());
-        assertEquals("F20", decoded.frames().get(20).actions().getFirst().name());
+        assertEquals("F20", ((MarkerAction) decoded.frames().get(20).actions().getFirst()).name());
     }
 
     @Test
