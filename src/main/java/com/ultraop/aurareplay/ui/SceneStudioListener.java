@@ -66,7 +66,7 @@ public final class SceneStudioListener implements Listener {
             String name = uniqueSceneName(service);
             Scene scene = service.create(name);
             selectedScenes.put(player.getUniqueId(), name);
-            timelineTicks.put(player.getUniqueId(), 0L);
+            timelineTicks.put(player.getUniqueId(), scene.timeline().inPoint());
             player.sendMessage(ChatColor.GREEN + "Created scene: " + name);
             renderScene(player, scene);
             return;
@@ -97,10 +97,7 @@ public final class SceneStudioListener implements Listener {
         try {
             if (slot >= 0 && slot < 12) {
                 var actors = engine.actorManager().all().stream().sorted(Comparator.comparing(a -> a.id().toString())).toList();
-                if (slot < actors.size()) {
-                    ActorDefinition actor = actors.get(slot);
-                    service.toggleActor(scene, actor.id());
-                }
+                if (slot < actors.size()) service.toggleActor(scene, actors.get(slot).id());
             } else if (slot == 12) {
                 var cameras = engine.cameraManager().all().stream().sorted(Comparator.comparing(CameraDefinition::id)).toList();
                 if (!cameras.isEmpty()) {
@@ -124,17 +121,16 @@ public final class SceneStudioListener implements Listener {
             } else if (slot == 19) {
                 engine.sceneManager().stop(player);
             } else if (slot == 20) {
-                long duration = Math.max(0L, scene.timeline().durationTicks() + ((click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) ? 20L : -20L));
+                long delta = (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) ? 20L : -20L;
+                long duration = Math.max(0L, scene.timeline().durationTicks() + delta);
                 service.setDuration(scene, duration);
                 tick = Math.min(tick, duration);
                 timelineTicks.put(player.getUniqueId(), tick);
             } else if (slot == 21) {
                 if (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) {
-                    long out = Math.max(scene.timeline().inPoint(), Math.min(tick, scene.timeline().durationTicks()));
-                    editor.setRange(scene.timeline(), scene.timeline().inPoint(), out);
+                    editor.setRange(scene.timeline(), scene.timeline().inPoint(), Math.max(scene.timeline().inPoint(), Math.min(tick, scene.timeline().durationTicks())));
                 } else {
-                    long in = Math.max(0, Math.min(tick, scene.timeline().outPoint()));
-                    editor.setRange(scene.timeline(), in, scene.timeline().outPoint());
+                    editor.setRange(scene.timeline(), Math.max(0L, Math.min(tick, scene.timeline().outPoint())), scene.timeline().outPoint());
                 }
             } else if (slot == 22) {
                 if (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) {
@@ -147,7 +143,15 @@ public final class SceneStudioListener implements Listener {
                 if (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) editor.redo(scene.timeline());
                 else editor.undo(scene.timeline());
             } else if (slot == 24) {
-                engine.sceneManager().play(player, scene.name());
+                if (engine.sceneManager().paused(player)) {
+                    engine.sceneManager().resume(player);
+                    player.sendMessage(ChatColor.GREEN + "Scene resumed.");
+                } else if (engine.sceneManager().activeScene(player).isPresent()) {
+                    engine.sceneManager().pause(player);
+                    player.sendMessage(ChatColor.YELLOW + "Scene paused.");
+                } else {
+                    engine.sceneManager().play(player, scene.name());
+                }
             } else if (slot == 25) {
                 engine.sceneManager().stop(player);
             } else if (slot == 26) {
@@ -157,6 +161,7 @@ public final class SceneStudioListener implements Listener {
         } catch (IllegalArgumentException ex) {
             player.sendMessage(ChatColor.RED + ex.getMessage());
         }
+        engine.sceneManager().currentTick(player).ifPresent(value -> timelineTicks.put(player.getUniqueId(), Math.round(value)));
         renderScene(player, scene);
     }
 
@@ -170,10 +175,7 @@ public final class SceneStudioListener implements Listener {
         var scenes = engine.sceneStudioService().scenes().stream().toList();
         for (int i = 0; i < Math.min(21, scenes.size()); i++) {
             Scene scene = scenes.get(i);
-            item(inventory, i, Material.BOOK, scene.name(),
-                    "Actors: " + scene.actorIds().size(),
-                    "Camera: " + (scene.cameraId() == null ? "none" : scene.cameraId()),
-                    "Duration: " + scene.timeline().durationTicks() + " ticks");
+            item(inventory, i, Material.BOOK, scene.name(), "Actors: " + scene.actorIds().size(), "Camera: " + (scene.cameraId() == null ? "none" : scene.cameraId()), "Duration: " + scene.timeline().durationTicks() + " ticks");
         }
         item(inventory, 22, Material.WRITABLE_BOOK, "Create Scene", "Creates a unique scene name");
         item(inventory, 23, Material.BARRIER, "Delete Selected", "Selected: " + selectedScenes.getOrDefault(player.getUniqueId(), "none"));
@@ -187,8 +189,7 @@ public final class SceneStudioListener implements Listener {
         for (int i = 0; i < Math.min(12, actors.size()); i++) {
             ActorDefinition actor = actors.get(i);
             boolean included = scene.actorIds().contains(actor.id());
-            item(inventory, i, included ? Material.LIME_DYE : Material.GRAY_DYE,
-                    (included ? "Included: " : "Available: ") + actor.name(), "Toggle scene membership", "Actor: " + actor.id());
+            item(inventory, i, included ? Material.LIME_DYE : Material.GRAY_DYE, (included ? "Included: " : "Available: ") + actor.name(), "Toggle scene membership", "Actor: " + actor.id());
         }
         item(inventory, 12, Material.SPYGLASS, "Assign Camera", "Current: " + (scene.cameraId() == null ? "none" : scene.cameraId()));
         item(inventory, 13, Material.BARRIER, "Unassign Camera");
@@ -196,14 +197,15 @@ public final class SceneStudioListener implements Listener {
         item(inventory, 15, Material.ARROW, "Speed +", "Current: " + fmt(scene.timeline().playbackSpeed()));
         item(inventory, 16, Material.REPEATER, "Loop", "Current: " + scene.timeline().loop());
         item(inventory, 17, Material.CLOCK, "Reverse", "Current: " + scene.timeline().reverse());
-        item(inventory, 18, Material.LIME_DYE, "Play Scene", "Viewer-local scene preview");
+        item(inventory, 18, Material.LIME_DYE, "Play Scene", "Starts at scene range");
         item(inventory, 19, Material.RED_DYE, "Stop Scene");
         long tick = timelineTicks.getOrDefault(player.getUniqueId(), scene.timeline().inPoint());
         item(inventory, 20, Material.CLOCK, "Duration ±20", "Left: -20 ticks", "Right: +20 ticks", "Current: " + scene.timeline().durationTicks());
-        item(inventory, 21, Material.COMPARATOR, "In / Out", "Left: set In at current tick", "Right: set Out at current tick", "Current: " + scene.timeline().inPoint() + " → " + scene.timeline().outPoint(), "Cursor: " + tick);
+        item(inventory, 21, Material.COMPARATOR, "In / Out", "Left: set In at current tick", "Right: set Out at current tick", "Range: " + scene.timeline().inPoint() + " → " + scene.timeline().outPoint(), "Cursor: " + tick);
         item(inventory, 22, Material.NAME_TAG, "Marker", "Left: add marker", "Right: remove last marker", "Markers: " + scene.timeline().markers().size(), "Tick: " + tick);
         item(inventory, 23, Material.PAPER, "History", "Left: Undo", "Right: Redo");
-        item(inventory, 24, Material.LIME_DYE, "Play Preview", "Starts at scene In point");
+        String transport = engine.sceneManager().paused(player) ? "Resume Scene" : (engine.sceneManager().activeScene(player).isPresent() ? "Pause Scene" : "Play Preview");
+        item(inventory, 24, engine.sceneManager().paused(player) ? Material.LIME_DYE : Material.CLOCK, transport, "Viewer-local transport control", "Tick: " + tick);
         item(inventory, 25, Material.RED_DYE, "Stop Preview");
         item(inventory, 26, Material.ARROW, "Back", "Return to Project");
         player.openInventory(inventory);
