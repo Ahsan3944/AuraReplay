@@ -39,7 +39,7 @@ public record CameraTransform(
         return new CameraTransform(
                 lerp(a.x, b.x, t), lerp(a.y, b.y, t), lerp(a.z, b.z, t),
                 lerpAngle(a.yaw, b.yaw, t),
-                lerp(a.pitch, b.pitch, t),
+                (float) lerp(a.pitch, b.pitch, t),
                 lerpAngle(a.roll, b.roll, t),
                 (float) lerp(a.fov, b.fov, t));
     }
