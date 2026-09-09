@@ -2,6 +2,7 @@ package com.ultraop.aurareplay.storage;
 
 import com.ultraop.aurareplay.recording.Recording;
 import com.ultraop.aurareplay.recording.RecordingBinaryCodec;
+import com.ultraop.aurareplay.recording.RecordingIndexedFile;
 import com.ultraop.aurareplay.recording.RecordingManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -17,12 +18,13 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-/** Durable .arrec recording files plus a SQLite metadata index. */
+/** Durable indexed .arrec recording files plus a SQLite metadata index. */
 public final class RecordingStorageManager implements AutoCloseable {
-    private static final int FORMAT_VERSION = 3;
+    private static final int LEGACY_FORMAT_VERSION = 3;
+    private static final int FORMAT_VERSION = 4;
     private final File databaseFile;
     private final Path recordingsDirectory;
-    private final RecordingBinaryCodec codec;
+    private final RecordingBinaryCodec legacyCodec;
     private final Executor executor;
 
     public RecordingStorageManager(JavaPlugin plugin, Executor executor) {
@@ -31,7 +33,7 @@ public final class RecordingStorageManager implements AutoCloseable {
         if (!data.exists() && !data.mkdirs()) throw new IllegalStateException("Could not create plugin data directory");
         databaseFile = new File(data, "aurareplay.db"); recordingsDirectory = new File(data, "recordings").toPath();
         try { Files.createDirectories(recordingsDirectory); } catch (IOException e) { throw new IllegalStateException("Could not create recordings directory", e); }
-        codec = new RecordingBinaryCodec(); initialize();
+        legacyCodec = new RecordingBinaryCodec(); initialize();
     }
 
     public CompletableFuture<List<RecordingMetadata>> listAsync() { return CompletableFuture.supplyAsync(this::list, executor); }
@@ -44,18 +46,7 @@ public final class RecordingStorageManager implements AutoCloseable {
 
     public CompletableFuture<Integer> loadAllAsync(RecordingManager manager) {
         Objects.requireNonNull(manager, "manager");
-        return CompletableFuture.supplyAsync(() -> {
-            int loaded = 0;
-            for (RecordingMetadata m : list()) {
-                try {
-                    manager.register(load(m));
-                    loaded++;
-                } catch (RuntimeException | IOException ignored) {
-                    // A single damaged recording must not prevent healthy recordings from loading.
-                }
-            }
-            return loaded;
-        }, executor);
+        return CompletableFuture.supplyAsync(() -> { int loaded = 0; for (RecordingMetadata m : list()) { try { manager.register(load(m)); loaded++; } catch (RuntimeException | IOException ignored) { } } return loaded; }, executor);
     }
 
     public CompletableFuture<Recording> loadAsync(String name) {
@@ -64,24 +55,25 @@ public final class RecordingStorageManager implements AutoCloseable {
     public Recording load(String name) throws IOException { return load(findMetadata(name).orElseThrow(() -> new IOException("recording not found: " + name))); }
 
     private Recording load(RecordingMetadata metadata) throws IOException {
-        if (metadata.formatVersion() != FORMAT_VERSION) {
+        Path path = resolveRecordingPath(metadata);
+        Recording recording;
+        if (metadata.formatVersion() == FORMAT_VERSION) {
+            recording = RecordingIndexedFile.read(path);
+        } else if (metadata.formatVersion() == LEGACY_FORMAT_VERSION) {
+            recording = legacyCodec.decode(Files.readAllBytes(path));
+        } else {
             throw new IOException("unsupported stored recording format version: " + metadata.formatVersion());
         }
-        Path path = recordingsDirectory.resolve(metadata.fileName()).normalize();
-        if (!path.getParent().equals(recordingsDirectory) || !Files.isRegularFile(path)) {
-            throw new IOException("recording file missing: " + path.getFileName());
-        }
-        Recording recording = codec.decode(Files.readAllBytes(path));
-        if (!normalize(recording.name()).equals(metadata.name())) {
-            throw new IOException("recording metadata/name mismatch: " + metadata.name());
-        }
-        if (recording.durationTicks() != metadata.durationTicks()) {
-            throw new IOException("recording metadata/duration mismatch: " + metadata.name());
-        }
-        if (recording.frames().size() != metadata.frameCount()) {
-            throw new IOException("recording metadata/frame-count mismatch: " + metadata.name());
-        }
+        validateMetadata(metadata, recording);
         return recording;
+    }
+
+    /** Fast random-access frame lookup from the indexed file without loading the full recording. */
+    public TickLookup readFrame(String name, int frameIndex) throws IOException {
+        RecordingMetadata metadata = findMetadata(name).orElseThrow(() -> new IOException("recording not found: " + name));
+        Path path = resolveRecordingPath(metadata);
+        if (metadata.formatVersion() != FORMAT_VERSION) throw new IOException("random access requires indexed recording format");
+        return new TickLookup(metadata.name(), frameIndex, RecordingIndexedFile.readFrame(path, frameIndex));
     }
 
     public CompletableFuture<RecordingMetadata> saveAsync(Recording recording) { return CompletableFuture.supplyAsync(() -> save(recording), executor); }
@@ -90,10 +82,12 @@ public final class RecordingStorageManager implements AutoCloseable {
         String normalized = normalize(recording.name()); String fileName = fileNameFor(normalized);
         Path target = recordingsDirectory.resolve(fileName); Path temp = recordingsDirectory.resolve(fileName + ".tmp");
         try {
-            byte[] encoded = codec.encode(recording); Files.write(temp, encoded); moveAtomically(temp, target); long now = Instant.now().toEpochMilli();
+            RecordingIndexedFile.write(temp, recording);
+            moveAtomically(temp, target);
+            long now = Instant.now().toEpochMilli();
             try (Connection c = open(); PreparedStatement ps = c.prepareStatement("INSERT INTO recordings(name,file_name,format_version,duration_ticks,frame_count,size_bytes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET file_name=excluded.file_name,format_version=excluded.format_version,duration_ticks=excluded.duration_ticks,frame_count=excluded.frame_count,size_bytes=excluded.size_bytes,updated_at=excluded.updated_at")) {
                 Optional<RecordingMetadata> old = findMetadata(normalized, c);
-                ps.setString(1, normalized); ps.setString(2, fileName); ps.setInt(3, FORMAT_VERSION); ps.setLong(4, recording.durationTicks()); ps.setInt(5, recording.frames().size()); ps.setLong(6, encoded.length); ps.setLong(7, old.map(RecordingMetadata::createdAt).orElse(now)); ps.setLong(8, now); ps.executeUpdate();
+                ps.setString(1, normalized); ps.setString(2, fileName); ps.setInt(3, FORMAT_VERSION); ps.setLong(4, recording.durationTicks()); ps.setInt(5, recording.frames().size()); ps.setLong(6, Files.size(target)); ps.setLong(7, old.map(RecordingMetadata::createdAt).orElse(now)); ps.setLong(8, now); ps.executeUpdate();
             }
             return findMetadata(normalized).orElseThrow(() -> new IllegalStateException("recording index write failed"));
         } catch (IOException | SQLException e) { try { Files.deleteIfExists(temp); } catch (IOException ignored) { } throw failure("Could not save recording " + recording.name(), e); }
@@ -115,6 +109,16 @@ public final class RecordingStorageManager implements AutoCloseable {
             ps.setString(1, normalize(name)); try (ResultSet rs = ps.executeQuery()) { return rs.next() ? Optional.of(metadata(rs)) : Optional.empty(); }
         }
     }
+    private Path resolveRecordingPath(RecordingMetadata metadata) throws IOException {
+        Path path = recordingsDirectory.resolve(metadata.fileName()).normalize();
+        if (!path.getParent().equals(recordingsDirectory) || !Files.isRegularFile(path)) throw new IOException("recording file missing: " + path.getFileName());
+        return path;
+    }
+    private void validateMetadata(RecordingMetadata metadata, Recording recording) throws IOException {
+        if (!normalize(recording.name()).equals(metadata.name())) throw new IOException("recording metadata/name mismatch: " + metadata.name());
+        if (recording.durationTicks() != metadata.durationTicks()) throw new IOException("recording metadata/duration mismatch: " + metadata.name());
+        if (recording.frames().size() != metadata.frameCount()) throw new IOException("recording metadata/frame-count mismatch: " + metadata.name());
+    }
     private void initialize() {
         try (Connection c = open(); Statement s = c.createStatement()) {
             s.executeUpdate("PRAGMA journal_mode = WAL");
@@ -129,4 +133,5 @@ public final class RecordingStorageManager implements AutoCloseable {
     private static RuntimeException failure(String message, Exception e) { return new IllegalStateException(message, e); }
     @Override public void close() { }
     public record RecordingMetadata(String name, String fileName, int formatVersion, long durationTicks, int frameCount, long sizeBytes, long createdAt, long updatedAt) { }
+    public record TickLookup(String recordingName, int frameIndex, com.ultraop.aurareplay.recording.snapshot.TickSnapshot frame) { }
 }
