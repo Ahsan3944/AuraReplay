@@ -1,6 +1,6 @@
 plugins {
     java
-    id("io.papermc.paperweight.userdev") version "2.0.0-beta.23"
+    id("io.papermc.paperweight.userdev") version "2.0.0-beta.19"
 }
 
 group = "com.ultraop"
@@ -29,6 +29,12 @@ tasks.withType<JavaCompile>().configureEach {
 
 paperweight.reobfArtifactConfiguration = io.papermc.paperweight.userdev.ReobfArtifactConfiguration.REOBF_PRODUCTION
 
+val pluginName = "AuraReplay"
+
 tasks.jar {
-    archiveBaseName.set("AuraReplay")
+    archiveBaseName.set(pluginName)
+}
+
+tasks.assemble {
+    dependsOn(tasks.reobfJar)
 }
