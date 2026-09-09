@@ -7,16 +7,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/** Scene composition containing ordered actor references and a non-destructive timeline. */
+/** Scene composition containing ordered actor references, a camera reference and a timeline. */
 public final class Scene {
     private final String name;
     private final List<ActorId> actorIds = new ArrayList<>();
     private final Timeline timeline = new Timeline();
+    private String cameraId;
 
     public Scene(String name) { this.name = normalizeName(name); }
     public String name() { return name; }
     public List<ActorId> actorIds() { return List.copyOf(actorIds); }
     public Timeline timeline() { return timeline; }
+    public String cameraId() { return cameraId; }
 
     public boolean addActor(ActorId actorId) {
         Objects.requireNonNull(actorId, "actorId");
@@ -26,6 +28,7 @@ public final class Scene {
     }
     public boolean removeActor(ActorId actorId) { return actorIds.remove(actorId); }
     public void clearActors() { actorIds.clear(); }
+    public void setCameraId(String cameraId) { this.cameraId = cameraId == null || cameraId.isBlank() ? null : cameraId.trim(); }
 
     private static String normalizeName(String name) {
         Objects.requireNonNull(name, "name");
