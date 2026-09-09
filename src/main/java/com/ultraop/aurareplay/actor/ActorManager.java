@@ -18,11 +18,8 @@ public final class ActorManager {
         return actor;
     }
 
-    public ActorDefinition create(Recording recording, ActorTransform transform,
-                                  UUID sourceEntityUuid, Integer sourceEntityId) {
-        ActorDefinition actor = new ActorDefinition(
-                ActorId.random(), recording, transform, sourceEntityUuid, sourceEntityId
-        );
+    public ActorDefinition create(Recording recording, ActorTransform transform, UUID sourceEntityUuid, Integer sourceEntityId) {
+        ActorDefinition actor = new ActorDefinition(ActorId.random(), recording, transform, sourceEntityUuid, sourceEntityId);
         actors.put(actor.id(), actor);
         return actor;
     }
@@ -32,6 +29,12 @@ public final class ActorManager {
         if (recording == null) throw new IllegalArgumentException("recording cannot be null");
         if (source == null) throw new IllegalArgumentException("source cannot be null");
         return create(recording, transform, source.uuid(), source.entityId());
+    }
+
+    /** Registers a persisted actor using its stable ID. */
+    public void register(ActorDefinition actor) {
+        if (actor == null) throw new IllegalArgumentException("actor cannot be null");
+        actors.put(actor.id(), actor);
     }
 
     public Optional<ActorDefinition> get(ActorId id) { return Optional.ofNullable(actors.get(id)); }
