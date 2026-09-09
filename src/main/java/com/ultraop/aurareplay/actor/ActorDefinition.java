@@ -11,6 +11,8 @@ public final class ActorDefinition {
     private final UUID sourceEntityUuid;
     private final Integer sourceEntityId;
     private String name;
+    private String namePrefix = "";
+    private String nameSuffix = "";
     private double nameHeightOffset;
     private boolean nameVisible;
     private boolean visible = true;
@@ -41,6 +43,8 @@ public final class ActorDefinition {
     public UUID sourceEntityUuid() { return sourceEntityUuid; }
     public Integer sourceEntityId() { return sourceEntityId; }
     public String name() { return name; }
+    public String namePrefix() { return namePrefix; }
+    public String nameSuffix() { return nameSuffix; }
     public double nameHeightOffset() { return nameHeightOffset; }
     public boolean nameVisible() { return nameVisible; }
     public boolean visible() { return visible; }
@@ -52,6 +56,8 @@ public final class ActorDefinition {
     public ActorTransform transform() { return transform; }
 
     public void setName(String name) { this.name = Objects.requireNonNull(name); }
+    public void setNamePrefix(String prefix) { this.namePrefix = Objects.requireNonNull(prefix); }
+    public void setNameSuffix(String suffix) { this.nameSuffix = Objects.requireNonNull(suffix); }
     public void setNameHeightOffset(double offset) { this.nameHeightOffset = offset; }
     public void setNameVisible(boolean visible) { this.nameVisible = visible; }
     public void setVisible(boolean visible) { this.visible = visible; }
