@@ -32,12 +32,15 @@ public final class SceneManager {
     }
 
     public Scene create(String name) {
+        String key = normalize(name);
+        if (scenes.containsKey(key)) throw new IllegalArgumentException("scene already exists: " + name);
         Scene scene = new Scene(name);
-        scenes.put(normalize(name), scene);
+        scenes.put(key, scene);
         return scene;
     }
 
     public Optional<Scene> get(String name) { return Optional.ofNullable(scenes.get(normalize(name))); }
+    public boolean exists(String name) { return scenes.containsKey(normalize(name)); }
 
     public boolean delete(String name) {
         String key = normalize(name);
@@ -86,11 +89,16 @@ public final class SceneManager {
     public int play(Player viewer, String sceneName) {
         Scene scene = get(sceneName).orElseThrow(() -> new IllegalArgumentException("scene not found: " + sceneName));
         stop(viewer);
-        if (scene.timeline().durationTicks() == 0L) {
-            long duration = scene.actorIds().stream().map(actorManager::get).flatMap(Optional::stream)
-                    .mapToLong(actor -> actor.recording().durationTicks()).max().orElse(0L);
-            scene.timeline().setDurationTicks(duration);
-        }
+        ensureDuration(scene);
+        int started = startActors(viewer, scene);
+        ScenePlaybackSession session = new ScenePlaybackSession(scene);
+        activeSessions.put(viewer.getUniqueId(), session);
+        renderAt(viewer, session);
+        sceneCameras.camera(scene).ifPresent(camera -> cameraController.start(viewer, camera));
+        return started;
+    }
+
+    private int startActors(Player viewer, Scene scene) {
         int started = 0;
         for (ActorId actorId : scene.actorIds()) {
             Optional<ActorDefinition> actor = actorManager.get(actorId);
@@ -98,19 +106,67 @@ public final class SceneManager {
             playbackController.start(viewer, actor.get());
             started++;
         }
-        ScenePlaybackSession session = new ScenePlaybackSession(scene);
-        activeSessions.put(viewer.getUniqueId(), session);
-        playbackController.tickScene(viewer, scene.actorIds(), session.cursor().tick());
-        sceneCameras.camera(scene).ifPresent(camera -> cameraController.start(viewer, camera));
         return started;
+    }
+
+    private void ensureDuration(Scene scene) {
+        if (scene.timeline().durationTicks() != 0L) return;
+        long duration = scene.actorIds().stream().map(actorManager::get).flatMap(Optional::stream)
+                .mapToLong(actor -> actor.recording().durationTicks()).max().orElse(0L);
+        scene.timeline().setDurationTicks(duration);
     }
 
     public void tick(Player viewer) {
         ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
         if (session == null) return;
         boolean active = session.tick();
+        renderAt(viewer, session);
+        if (!active && session.finished()) stop(viewer);
+    }
+
+    private void renderAt(Player viewer, ScenePlaybackSession session) {
         playbackController.tickScene(viewer, session.scene().actorIds(), session.cursor().tick());
-        if (!active) stop(viewer);
+        if (cameraController.active(viewer)) cameraController.seek(viewer, session.cursor().tick());
+    }
+
+    public boolean pause(Player viewer) {
+        ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
+        if (session == null) return false;
+        session.setPaused(true);
+        return true;
+    }
+
+    public boolean resume(Player viewer) {
+        ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
+        if (session == null) return false;
+        session.setPaused(false);
+        return true;
+    }
+
+    public boolean paused(Player viewer) {
+        ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
+        return session != null && session.paused();
+    }
+
+    public Optional<Double> currentTick(Player viewer) {
+        ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
+        return session == null ? Optional.empty() : Optional.of(session.cursor().tick());
+    }
+
+    public boolean seek(Player viewer, double tick) {
+        ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
+        if (session == null) return false;
+        session.seek(tick);
+        renderAt(viewer, session);
+        return true;
+    }
+
+    public boolean step(Player viewer, double deltaTicks) {
+        ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
+        if (session == null) return false;
+        session.seek(session.cursor().tick() + deltaTicks);
+        renderAt(viewer, session);
+        return true;
     }
 
     public boolean stop(Player viewer) {
@@ -132,6 +188,6 @@ public final class SceneManager {
     }
 
     public void stopAll(Player viewer) { stop(viewer); }
-    public void clear() { activeSessions.clear(); scenes.clear(); sceneCameras.clear(); }
+    public void clear() { activeSessions.values().forEach(session -> {}); activeSessions.clear(); scenes.clear(); sceneCameras.clear(); }
     private static String normalize(String name) { return name.trim().toLowerCase(java.util.Locale.ROOT); }
 }
