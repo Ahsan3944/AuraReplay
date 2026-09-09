@@ -25,7 +25,7 @@ public final class RecordingBuffer {
 
     private volatile boolean running;
 
-    public void start() {
+    public synchronized void start() {
         if (running) return;
         running = true;
         writer.submit(this::drainLoop);
@@ -47,6 +47,17 @@ public final class RecordingBuffer {
             synchronized (completed) {
                 completed.add(snapshot);
             }
+        }
+    }
+
+    public List<TickSnapshot> stopAndSnapshot() {
+        running = false;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (!queue.isEmpty() && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        synchronized (completed) {
+            return List.copyOf(completed);
         }
     }
 
