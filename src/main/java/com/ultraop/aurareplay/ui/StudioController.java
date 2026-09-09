@@ -43,7 +43,6 @@ public final class StudioController {
     public void close(Player p) { sessions.remove(p.getUniqueId()); }
     public StudioSession session(Player p) { return sessions.get(p.getUniqueId()); }
 
-    /** Returns true when the supplied inventory is a Studio inventory owned by this controller. */
     public boolean isStudioInventory(Inventory inventory) {
         return inventory != null && inventory.getHolder() instanceof Holder;
     }
@@ -71,13 +70,8 @@ public final class StudioController {
         }
 
         if (slot == 26) {
-            if (s.page() == StudioSession.Page.ACTORS || s.page() == StudioSession.Page.ACTOR) {
-                s.actors();
-                renderActors(p);
-            } else {
-                s.root();
-                renderRoot(p);
-            }
+            if (s.page() == StudioSession.Page.ACTOR) { s.actors(); renderActors(p); }
+            else { s.root(); renderRoot(p); }
             return;
         }
 
@@ -111,7 +105,6 @@ public final class StudioController {
         }
 
         if ("Transform".equals(s.category())) {
-            // Root Transform opens a selected-actor picker when no actor is selected.
             s.actors();
             renderActors(p);
             return;
@@ -129,6 +122,44 @@ public final class StudioController {
         } else if ("Camera".equals(s.category()) && slot == 11) {
             p.sendMessage(ChatColor.GRAY + "Registered cameras: " + tools.cameraCount());
         }
+    }
+
+    private void transformClick(Player p, ActorDefinition a, int slot) {
+        ActorTransform t = a.transform();
+        ActorTransform next = switch (slot) {
+            case 0 -> t.withPosition(t.x() - POSITION_STEP, t.y(), t.z());
+            case 1 -> t.withPosition(t.x() + POSITION_STEP, t.y(), t.z());
+            case 3 -> t.withPosition(t.x(), t.y() - POSITION_STEP, t.z());
+            case 4 -> t.withPosition(t.x(), t.y() + POSITION_STEP, t.z());
+            case 6 -> t.withPosition(t.x(), t.y(), t.z() - POSITION_STEP);
+            case 7 -> t.withPosition(t.x(), t.y(), t.z() + POSITION_STEP);
+            case 9 -> t.withRotation(t.yaw() - ROTATION_STEP, t.pitch(), t.roll());
+            case 10 -> t.withRotation(t.yaw() + ROTATION_STEP, t.pitch(), t.roll());
+            case 12 -> t.withRotation(t.yaw(), t.pitch() - ROTATION_STEP, t.roll());
+            case 13 -> t.withRotation(t.yaw(), t.pitch() + ROTATION_STEP, t.roll());
+            case 15 -> t.withRotation(t.yaw(), t.pitch(), t.roll() - ROTATION_STEP);
+            case 16 -> t.withRotation(t.yaw(), t.pitch(), t.roll() + ROTATION_STEP);
+            case 18 -> t.withScale(Math.max(SCALE_STEP, t.scale() - SCALE_STEP));
+            case 19 -> t.withScale(t.scale() + SCALE_STEP);
+            default -> null;
+        };
+        if (next != null) {
+            a.setTransform(next);
+            renderTransform(p, a);
+        }
+    }
+
+    private void motionClick(Player p, ActorDefinition a, int slot) {
+        switch (slot) {
+            case 10 -> a.setPlaybackSpeed(Math.max(0.1d, a.playbackSpeed() - 0.1d));
+            case 11 -> a.setPlaybackSpeed(a.playbackSpeed() + 0.1d);
+            case 13 -> a.setLoop(!a.loop());
+            case 14 -> a.setStartDelayTicks(a.startDelayTicks() + 10);
+            case 15 -> a.setStartDelayTicks(Math.max(0, a.startDelayTicks() - 10));
+            case 16 -> a.setReverse(!a.reverse());
+            default -> { return; }
+        }
+        renderMotion(p, a);
     }
 
     private void renderRoot(Player p) {
@@ -173,20 +204,20 @@ public final class StudioController {
     private void renderTransform(Player p, ActorDefinition a) {
         ActorTransform t = a.transform();
         Inventory i = inv(ChatColor.DARK_AQUA + "Transform / " + a.name());
-        item(i, 0, Material.REDSTONE, "X -", "Current: " + format(t.x()), "Step: " + format(POSITION_STEP));
-        item(i, 1, Material.EMERALD, "X +", "Current: " + format(t.x()), "Step: " + format(POSITION_STEP));
-        item(i, 3, Material.REDSTONE, "Y -", "Current: " + format(t.y()), "Step: " + format(POSITION_STEP));
-        item(i, 4, Material.EMERALD, "Y +", "Current: " + format(t.y()), "Step: " + format(POSITION_STEP));
-        item(i, 6, Material.REDSTONE, "Z -", "Current: " + format(t.z()), "Step: " + format(POSITION_STEP));
-        item(i, 7, Material.EMERALD, "Z +", "Current: " + format(t.z()), "Step: " + format(POSITION_STEP));
-        item(i, 9, Material.REDSTONE_TORCH, "Yaw -", "Current: " + format(t.yaw()) + "°", "Step: " + format(ROTATION_STEP) + "°");
-        item(i, 10, Material.TORCH, "Yaw +", "Current: " + format(t.yaw()) + "°", "Step: " + format(ROTATION_STEP) + "°");
-        item(i, 12, Material.REDSTONE_TORCH, "Pitch -", "Current: " + format(t.pitch()) + "°", "Step: " + format(ROTATION_STEP) + "°");
-        item(i, 13, Material.TORCH, "Pitch +", "Current: " + format(t.pitch()) + "°", "Step: " + format(ROTATION_STEP) + "°");
-        item(i, 15, Material.REDSTONE_TORCH, "Roll -", "Current: " + format(t.roll()) + "°", "Step: " + format(ROTATION_STEP) + "°");
-        item(i, 16, Material.TORCH, "Roll +", "Current: " + format(t.roll()) + "°", "Step: " + format(ROTATION_STEP) + "°");
-        item(i, 18, Material.REDSTONE, "Scale -", "Current: " + format(t.scale()), "Step: " + format(SCALE_STEP));
-        item(i, 19, Material.EMERALD, "Scale +", "Current: " + format(t.scale()), "Step: " + format(SCALE_STEP));
+        item(i, 0, Material.REDSTONE, "X -", "Current: " + format(t.x()), "Step: 0.10");
+        item(i, 1, Material.EMERALD, "X +", "Current: " + format(t.x()), "Step: 0.10");
+        item(i, 3, Material.REDSTONE, "Y -", "Current: " + format(t.y()), "Step: 0.10");
+        item(i, 4, Material.EMERALD, "Y +", "Current: " + format(t.y()), "Step: 0.10");
+        item(i, 6, Material.REDSTONE, "Z -", "Current: " + format(t.z()), "Step: 0.10");
+        item(i, 7, Material.EMERALD, "Z +", "Current: " + format(t.z()), "Step: 0.10");
+        item(i, 9, Material.REDSTONE_TORCH, "Yaw -", "Current: " + format(t.yaw()) + "°", "Step: 5°");
+        item(i, 10, Material.TORCH, "Yaw +", "Current: " + format(t.yaw()) + "°", "Step: 5°");
+        item(i, 12, Material.REDSTONE_TORCH, "Pitch -", "Current: " + format(t.pitch()) + "°", "Step: 5°");
+        item(i, 13, Material.TORCH, "Pitch +", "Current: " + format(t.pitch()) + "°", "Step: 5°");
+        item(i, 15, Material.REDSTONE_TORCH, "Roll -", "Current: " + format(t.roll()) + "°", "Step: 5°");
+        item(i, 16, Material.TORCH, "Roll +", "Current: " + format(t.roll()) + "°", "Step: 5°");
+        item(i, 18, Material.REDSTONE, "Scale -", "Current: " + format(t.scale()), "Step: 0.10");
+        item(i, 19, Material.EMERALD, "Scale +", "Current: " + format(t.scale()), "Step: 0.10");
         item(i, 22, Material.BOOK, "Current Transform", transformSummary(t));
         item(i, 26, Material.ARROW, "Back", "Return to actor");
         p.openInventory(i);
@@ -220,19 +251,17 @@ public final class StudioController {
         p.openInventory(i);
     }
 
-    private static ActorDefinition selectedActor(StudioSession s) {
-        return null;
-    }
-
-    private ActorDefinition selectedActorFromSession(StudioSession s) {
+    private ActorDefinition selectedActor(StudioSession s) {
         ActorId id = s.selectedActor();
         return id == null ? null : engine.actorManager().get(id).orElse(null);
     }
 
-    private static String transformSummary(ActorTransform t) {
-        return "X " + format(t.x()) + "  Y " + format(t.y()) + "  Z " + format(t.z()),
+    private static String[] transformSummary(ActorTransform t) {
+        return new String[] {
+                "X " + format(t.x()) + "  Y " + format(t.y()) + "  Z " + format(t.z()),
                 "Yaw " + format(t.yaw()) + "  Pitch " + format(t.pitch()) + "  Roll " + format(t.roll()),
-                "Scale " + format(t.scale());
+                "Scale " + format(t.scale())
+        };
     }
 
     private static String format(double value) { return String.format(java.util.Locale.ROOT, "%.2f", value); }
