@@ -3,6 +3,7 @@ package com.ultraop.aurareplay.ui;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
@@ -10,16 +11,27 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 /** Bridges Bukkit inventory events into the viewer-local Studio controller. */
 public final class StudioListener implements Listener {
     private final StudioController controller;
-    public StudioListener(StudioController controller) { this.controller = controller; }
+    private final ActorSourceBrowser sourceBrowser;
+    public StudioListener(StudioController controller, ActorSourceBrowser sourceBrowser) {
+        this.controller = controller;
+        this.sourceBrowser = sourceBrowser;
+    }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (!controller.isStudioInventory(event.getView().getTopInventory())) return;
         event.setCancelled(true);
-        if (event.getClickedInventory() == event.getView().getTopInventory()) {
-            controller.click(player, event.getRawSlot());
+        if (event.getClickedInventory() != event.getView().getTopInventory()) return;
+
+        // The Actors root entry is the source browser entry point. Existing actor
+        // editing remains available through the actor command layer while the Studio
+        // source workflow is being migrated into the unified actor editor.
+        if (event.getRawSlot() == 10 && event.getView().getTitle().contains("AuraReplay Studio")) {
+            sourceBrowser.openRecordings(player);
+            return;
         }
+        controller.click(player, event.getRawSlot());
     }
 
     @EventHandler
@@ -31,9 +43,6 @@ public final class StudioListener implements Listener {
                 controller.close(player);
                 return;
             }
-            // Inventory navigation calls openInventory() synchronously. By the time
-            // this close callback runs, the replacement Studio inventory is normally
-            // already open; only close the session when the viewer actually left Studio.
             if (!controller.isStudioInventory(player.getOpenInventory().getTopInventory())) {
                 controller.close(player);
             }
