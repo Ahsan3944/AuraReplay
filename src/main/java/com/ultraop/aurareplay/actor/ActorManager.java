@@ -40,6 +40,32 @@ public final class ActorManager {
     public Optional<ActorDefinition> get(ActorId id) { return Optional.ofNullable(actors.get(id)); }
     public Optional<ActorDefinition> get(UUID id) { return get(new ActorId(id)); }
     public boolean remove(ActorId id) { return actors.remove(id) != null; }
+
+    /** Returns actors whose immutable source recording matches the supplied name. */
+    public Collection<ActorDefinition> usingRecording(String recordingName) {
+        String normalized = normalizeRecordingName(recordingName);
+        return actors.values().stream()
+                .filter(actor -> normalizeRecordingName(actor.recording().name()).equals(normalized))
+                .toList();
+    }
+
+    /** Removes every actor that references the supplied recording. */
+    public int removeUsingRecording(String recordingName) {
+        String normalized = normalizeRecordingName(recordingName);
+        int removed = 0;
+        for (ActorDefinition actor : actors.values()) {
+            if (normalizeRecordingName(actor.recording().name()).equals(normalized) && actors.remove(actor.id(), actor)) {
+                removed++;
+            }
+        }
+        return removed;
+    }
+
     public Collection<ActorDefinition> all() { return actors.values().stream().toList(); }
     public void clear() { actors.clear(); }
+
+    private static String normalizeRecordingName(String name) {
+        if (name == null) return "";
+        return name.trim().toLowerCase(java.util.Locale.ROOT);
+    }
 }
