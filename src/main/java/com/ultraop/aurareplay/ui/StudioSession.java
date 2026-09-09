@@ -6,7 +6,7 @@ import java.util.UUID;
 
 /** Viewer-local Studio navigation and selection state. */
 public final class StudioSession {
-    public enum Page { ROOT, CATEGORY, ACTORS }
+    public enum Page { ROOT, CATEGORY, ACTORS, ACTOR }
 
     private final UUID viewerId;
     private Page page = Page.ROOT;
@@ -19,8 +19,8 @@ public final class StudioSession {
     public String category() { return category; }
     public ActorId selectedActor() { return selectedActor; }
 
-    public void root() { page = Page.ROOT; category = null; }
+    public void root() { page = Page.ROOT; category = null; selectedActor = null; }
     public void category(String category) { page = Page.CATEGORY; this.category = category; }
     public void actors() { page = Page.ACTORS; category = "Actors"; }
-    public void selectActor(ActorId actorId) { selectedActor = actorId; }
+    public void selectActor(ActorId actorId) { selectedActor = actorId; page = Page.ACTOR; category = "Actors / " + actorId; }
 }
