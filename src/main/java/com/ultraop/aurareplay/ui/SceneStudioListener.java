@@ -120,17 +120,13 @@ public final class SceneStudioListener implements Listener {
             } else if (slot == 17) {
                 editor.setReverse(scene.timeline(), !scene.timeline().reverse());
             } else if (slot == 18) {
-                editor.setRange(scene.timeline(), scene.timeline().inPoint(), scene.timeline().outPoint());
                 engine.sceneManager().play(player, scene.name());
             } else if (slot == 19) {
                 engine.sceneManager().stop(player);
             } else if (slot == 20) {
-                if (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) {
-                    editor.setDuration(scene.timeline(), scene.timeline().durationTicks() + 20);
-                } else {
-                    editor.setDuration(scene.timeline(), Math.max(0, scene.timeline().durationTicks() - 20));
-                }
-                tick = Math.min(tick, scene.timeline().durationTicks());
+                long duration = Math.max(0L, scene.timeline().durationTicks() + ((click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) ? 20L : -20L));
+                service.setDuration(scene, duration);
+                tick = Math.min(tick, duration);
                 timelineTicks.put(player.getUniqueId(), tick);
             } else if (slot == 21) {
                 if (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) {
@@ -204,7 +200,7 @@ public final class SceneStudioListener implements Listener {
         item(inventory, 19, Material.RED_DYE, "Stop Scene");
         long tick = timelineTicks.getOrDefault(player.getUniqueId(), scene.timeline().inPoint());
         item(inventory, 20, Material.CLOCK, "Duration ±20", "Left: -20 ticks", "Right: +20 ticks", "Current: " + scene.timeline().durationTicks());
-        item(inventory, 21, Material.COMPARATOR, "In / Out", "Left: set In at current tick", "Right: set Out at current tick", "Current: " + scene.timeline().inPoint() + " → " + scene.timeline().outPoint(), "Timeline cursor: " + tick);
+        item(inventory, 21, Material.COMPARATOR, "In / Out", "Left: set In at current tick", "Right: set Out at current tick", "Current: " + scene.timeline().inPoint() + " → " + scene.timeline().outPoint(), "Cursor: " + tick);
         item(inventory, 22, Material.NAME_TAG, "Marker", "Left: add marker", "Right: remove last marker", "Markers: " + scene.timeline().markers().size(), "Tick: " + tick);
         item(inventory, 23, Material.PAPER, "History", "Left: Undo", "Right: Redo");
         item(inventory, 24, Material.LIME_DYE, "Play Preview", "Starts at scene In point");
