@@ -4,6 +4,7 @@ import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.ProtocolManager;
 import com.ultraop.aurareplay.command.AuraReplayCommand;
 import com.ultraop.aurareplay.core.AuraEngine;
+import com.ultraop.aurareplay.ui.StudioCommand;
 import com.ultraop.aurareplay.ui.StudioListener;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -14,6 +15,7 @@ public final class AuraReplayPlugin extends JavaPlugin {
         engine=new AuraEngine(this,protocolManager); engine.start();
         AuraReplayCommand command=new AuraReplayCommand(engine);
         if(getCommand("aurareplay")!=null){getCommand("aurareplay").setExecutor(command);getCommand("aurareplay").setTabCompleter(command);}
+        if(getCommand("arstudio")!=null)getCommand("arstudio").setExecutor(new StudioCommand(engine.studioController()));
         getServer().getPluginManager().registerEvents(new StudioListener(engine.studioController()),this);
         getLogger().info("AuraReplay foundation enabled.");
     }
