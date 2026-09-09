@@ -31,7 +31,7 @@ public final class ActorPlayback {
     public void tick() {
         elapsedTicks++;
         if (actor.frozen() || elapsedTicks <= actor.startDelayTicks()) return;
-        cursor.advance(1.0d, actor.playbackSpeed(), actor.reverse(), playbackDuration(), actor.loop());
+        cursor.advance(1.0d, actor.playbackSpeed(), actor.reverse(), playbackDurationTicks(), actor.loop());
     }
 
     /** Maps scene time to actor-local source time, preserving fractional ticks. */
@@ -42,7 +42,7 @@ public final class ActorPlayback {
         double duration = playbackDuration();
         if (actor.reverse() && duration > 0.0d) position = Math.max(0.0d, duration - 1.0d - position);
         cursor.seek(position);
-        if (actor.loop() && duration > 0.0d) cursor.advance(0.0d, 1.0d, false, (long) duration, true);
+        if (actor.loop() && duration > 0.0d) cursor.advance(0.0d, 1.0d, false, playbackDurationTicks(), true);
         elapsedTicks = Math.max(elapsedTicks, (long) Math.floor(Math.max(0.0d, sceneTick)));
     }
 
@@ -81,9 +81,8 @@ public final class ActorPlayback {
         return new ActorSample(sampled, transformed, bounded);
     }
 
-    private double playbackDuration() {
-        return Math.max(0.0d, source.frameCount());
-    }
+    private double playbackDuration() { return Math.max(0.0d, source.frameCount()); }
+    private long playbackDurationTicks() { return Math.max(0L, source.frameCount()); }
 
     private TickSnapshot frame(int index) {
         try { return source.frame(index); }
