@@ -1,5 +1,6 @@
 package com.ultraop.aurareplay.ui;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -14,13 +15,21 @@ public final class StudioListener implements Listener {
     @EventHandler
     public void onClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
-        if (controller.session(player) == null) return;
+        if (!controller.isStudioInventory(event.getView().getTopInventory())) return;
         event.setCancelled(true);
-        if (event.getClickedInventory() == event.getView().getTopInventory()) controller.click(player, event.getRawSlot());
+        if (event.getClickedInventory() == event.getView().getTopInventory()) controller.click(player,event.getRawSlot());
     }
 
     @EventHandler
     public void onClose(InventoryCloseEvent event) {
-        if (event.getPlayer() instanceof Player player && controller.session(player) != null) controller.close(player);
+        if (!(event.getPlayer() instanceof Player player)) return;
+        if (!controller.isStudioInventory(event.getInventory())) return;
+        Bukkit.getScheduler().runTask(controllerPlugin(player),()->{
+            if (!player.isOnline() || !controller.isStudioInventory(player.getOpenInventory().getTopInventory())) controller.close(player);
+        });
+    }
+
+    private org.bukkit.plugin.Plugin controllerPlugin(Player player) {
+        return player.getServer().getPluginManager().getPlugin("AuraReplay");
     }
 }
