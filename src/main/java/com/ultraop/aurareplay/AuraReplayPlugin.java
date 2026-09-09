@@ -6,6 +6,7 @@ import com.ultraop.aurareplay.command.PersistentAuraReplayCommand;
 import com.ultraop.aurareplay.core.AuraEngine;
 import com.ultraop.aurareplay.listener.PlaybackLifecycleListener;
 import com.ultraop.aurareplay.storage.ActorStorage;
+import com.ultraop.aurareplay.storage.PersistenceCoordinator;
 import com.ultraop.aurareplay.storage.ProjectStorage;
 import com.ultraop.aurareplay.storage.RecordingStorageManager;
 import com.ultraop.aurareplay.ui.ActorSourceBrowser;
@@ -24,13 +25,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class AuraReplayPlugin extends JavaPlugin {
-    private AuraEngine engine; private ProjectStorage projectStorage; private RecordingStorageManager recordingStorage; private ActorStorage actorStorage; private ExecutorService storageExecutor;
+    private AuraEngine engine; private ProjectStorage projectStorage; private RecordingStorageManager recordingStorage; private ActorStorage actorStorage; private PersistenceCoordinator persistenceCoordinator; private ExecutorService storageExecutor;
     private CompletableFuture<Void> pendingPersistence=CompletableFuture.completedFuture(null); private BukkitTask persistenceTask;
 
     @Override public void onEnable() {
         ProtocolManager protocolManager=ProtocolLibrary.getProtocolManager(); engine=new AuraEngine(this,protocolManager);
         storageExecutor=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"AuraReplay-Storage");t.setDaemon(true);return t;});
-        projectStorage=new ProjectStorage(this,storageExecutor); recordingStorage=new RecordingStorageManager(this,storageExecutor); actorStorage=new ActorStorage(this,storageExecutor);
+        projectStorage=new ProjectStorage(this,storageExecutor); recordingStorage=new RecordingStorageManager(this,storageExecutor); actorStorage=new ActorStorage(this,storageExecutor); persistenceCoordinator=new PersistenceCoordinator(this,storageExecutor);
         engine.recordingManager().attachStorage(recordingStorage);
         engine.actorPlaybackController().setSourceFactory(null);
         engine.actorPlaybackController().setAsyncSourceFactory(actor->engine.recordingManager().createPlaybackSourceAsync(actor.recording().name()),storageExecutor);
@@ -50,7 +51,7 @@ public final class AuraReplayPlugin extends JavaPlugin {
         ActorSourceBrowser sourceBrowser=new ActorSourceBrowser(engine); getServer().getPluginManager().registerEvents(new StudioListener(engine.studioController(),sourceBrowser),this); getServer().getPluginManager().registerEvents(new SceneStudioListener(engine),this); getServer().getPluginManager().registerEvents(new ActorSourceBrowserListener(sourceBrowser,engine),this); getServer().getPluginManager().registerEvents(new PlaybackLifecycleListener(engine),this);
         getLogger().info("AuraReplay foundation enabled with persistent project, recording, and actor storage.");
     }
-    private void persistProjectAsync(){if(projectStorage==null||actorStorage==null||engine==null)return;ProjectStorage.ProjectSnapshot p=projectStorage.capture(engine.sceneManager(),engine.cameraManager());List<ActorStorage.ActorSnapshot>a=actorStorage.captureAll(engine.actorManager());pendingPersistence=pendingPersistence.handle((ignored,error)->null).thenCompose(ignored->projectStorage.saveAsync(p)).thenCompose(ignored->actorStorage.saveAsync(a));}
-    @Override public void onDisable(){if(persistenceTask!=null){persistenceTask.cancel();persistenceTask=null;}if(projectStorage!=null&&actorStorage!=null&&engine!=null){try{pendingPersistence.join();projectStorage.save(projectStorage.capture(engine.sceneManager(),engine.cameraManager()));actorStorage.save(actorStorage.captureAll(engine.actorManager()));}finally{projectStorage.close();actorStorage.close();}}if(recordingStorage!=null)recordingStorage.close();if(engine!=null)engine.shutdown();if(storageExecutor!=null){storageExecutor.shutdown();storageExecutor=null;}}
+    private void persistProjectAsync(){if(persistenceCoordinator==null||projectStorage==null||actorStorage==null||engine==null)return;ProjectStorage.ProjectSnapshot p=projectStorage.capture(engine.sceneManager(),engine.cameraManager());List<ActorStorage.ActorSnapshot>a=actorStorage.captureAll(engine.actorManager());pendingPersistence=pendingPersistence.handle((ignored,error)->null).thenCompose(ignored->persistenceCoordinator.saveAsync(p,a));}
+    @Override public void onDisable(){if(persistenceTask!=null){persistenceTask.cancel();persistenceTask=null;}if(persistenceCoordinator!=null&&projectStorage!=null&&actorStorage!=null&&engine!=null){try{pendingPersistence.join();ProjectStorage.ProjectSnapshot p=projectStorage.capture(engine.sceneManager(),engine.cameraManager());List<ActorStorage.ActorSnapshot>a=actorStorage.captureAll(engine.actorManager());persistenceCoordinator.save(p,a);}finally{persistenceCoordinator.close();projectStorage.close();actorStorage.close();}}if(recordingStorage!=null)recordingStorage.close();if(engine!=null)engine.shutdown();if(storageExecutor!=null){storageExecutor.shutdown();storageExecutor=null;}}
     public AuraEngine engine(){return engine;} public ProjectStorage projectStorage(){return projectStorage;} public RecordingStorageManager recordingStorage(){return recordingStorage;} public ActorStorage actorStorage(){return actorStorage;}
 }
