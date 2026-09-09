@@ -42,9 +42,7 @@ public final class MotionEvaluator {
                 }
                 case LOOP -> { if (active) loop = true; }
                 case TRIM -> {
-                    if (timelineTick >= layer.startTick() && timelineTick <= layer.endTick()) {
-                        position = clamp(position, layer.startTick(), layer.endTick());
-                    }
+                    if (active) position = clamp(position, layer.startTick(), layer.endTick());
                 }
                 case RETIME -> { if (active) position = layer.startTick() + (position - layer.startTick()) * layer.value(); }
                 case FREEZE_POSE, POSE_SNAPSHOT -> { if (active) position = Math.max(0.0d, layer.value()); }
