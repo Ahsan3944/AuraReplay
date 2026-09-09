@@ -9,6 +9,7 @@ import org.bukkit.entity.Player;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -60,7 +61,6 @@ public final class SceneManager {
         return scene != null && scene.removeActor(actorId);
     }
 
-    /** Starts every valid actor in the scene against one shared viewer-local scene clock. */
     public int play(Player viewer, String sceneName) {
         Scene scene = get(sceneName).orElseThrow(() -> new IllegalArgumentException("scene not found: " + sceneName));
         stop(viewer);
@@ -86,7 +86,6 @@ public final class SceneManager {
         return started;
     }
 
-    /** Advances and renders one active scene for a viewer. Must run on the server thread. */
     public void tick(Player viewer) {
         ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
         if (session == null) return;
@@ -105,6 +104,11 @@ public final class SceneManager {
     public Optional<String> activeScene(Player viewer) {
         ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
         return session == null ? Optional.empty() : Optional.of(session.scene().name());
+    }
+
+    public Set<ActorId> activeActorIds(Player viewer) {
+        ScenePlaybackSession session = activeSessions.get(viewer.getUniqueId());
+        return session == null ? Set.of() : Set.copyOf(session.scene().actorIds());
     }
 
     public void stopAll(Player viewer) { stop(viewer); }
