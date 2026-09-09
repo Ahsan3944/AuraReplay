@@ -9,10 +9,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Thread boundary between the synchronous capture path and asynchronous processing.
- * The current phase keeps an in-memory immutable frame index; persistence is added behind this API.
- */
+/** Thread boundary between synchronous capture and asynchronous processing. */
 public final class RecordingBuffer {
 
     private final ConcurrentLinkedQueue<TickSnapshot> queue = new ConcurrentLinkedQueue<>();
@@ -27,14 +24,13 @@ public final class RecordingBuffer {
 
     public synchronized void start() {
         if (running) return;
+        clear();
         running = true;
         writer.submit(this::drainLoop);
     }
 
     public void append(TickSnapshot snapshot) {
-        if (running) {
-            queue.offer(snapshot);
-        }
+        if (running) queue.offer(snapshot);
     }
 
     private void drainLoop() {
@@ -56,12 +52,6 @@ public final class RecordingBuffer {
         while (!queue.isEmpty() && System.nanoTime() < deadline) {
             Thread.onSpinWait();
         }
-        synchronized (completed) {
-            return List.copyOf(completed);
-        }
-    }
-
-    public List<TickSnapshot> snapshot() {
         synchronized (completed) {
             return List.copyOf(completed);
         }
