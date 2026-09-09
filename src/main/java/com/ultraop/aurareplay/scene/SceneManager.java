@@ -4,6 +4,7 @@ import com.ultraop.aurareplay.actor.ActorDefinition;
 import com.ultraop.aurareplay.actor.ActorId;
 import com.ultraop.aurareplay.actor.ActorManager;
 import com.ultraop.aurareplay.actor.ActorPlaybackController;
+import com.ultraop.aurareplay.camera.CameraController;
 import org.bukkit.entity.Player;
 
 import java.util.Collection;
@@ -19,10 +20,15 @@ public final class SceneManager {
     private final Map<UUID, ScenePlaybackSession> activeSessions = new ConcurrentHashMap<>();
     private final ActorManager actorManager;
     private final ActorPlaybackController playbackController;
+    private final SceneCameraService sceneCameras;
+    private final CameraController cameraController;
 
-    public SceneManager(ActorManager actorManager, ActorPlaybackController playbackController) {
+    public SceneManager(ActorManager actorManager, ActorPlaybackController playbackController,
+                        SceneCameraService sceneCameras, CameraController cameraController) {
         this.actorManager = actorManager;
         this.playbackController = playbackController;
+        this.sceneCameras = sceneCameras;
+        this.cameraController = cameraController;
     }
 
     public Scene create(String name) {
@@ -38,10 +44,26 @@ public final class SceneManager {
         Scene scene = scenes.remove(key);
         if (scene == null) return false;
         activeSessions.entrySet().removeIf(entry -> entry.getValue().scene() == scene);
+        sceneCameras.unbind(scene);
         return true;
     }
 
     public Collection<Scene> all() { return scenes.values().stream().toList(); }
+
+    public boolean bindCamera(String sceneName, String cameraId) {
+        Scene scene = scenes.get(normalize(sceneName));
+        return scene != null && sceneCameras.bind(scene, cameraId);
+    }
+
+    public boolean unbindCamera(String sceneName) {
+        Scene scene = scenes.get(normalize(sceneName));
+        return scene != null && sceneCameras.unbind(scene);
+    }
+
+    public Optional<String> cameraId(String sceneName) {
+        Scene scene = scenes.get(normalize(sceneName));
+        return scene == null ? Optional.empty() : sceneCameras.cameraId(scene);
+    }
 
     public boolean addActor(String sceneName, ActorId actorId) {
         Scene scene = scenes.get(normalize(sceneName));
@@ -65,14 +87,10 @@ public final class SceneManager {
         Scene scene = get(sceneName).orElseThrow(() -> new IllegalArgumentException("scene not found: " + sceneName));
         stop(viewer);
         if (scene.timeline().durationTicks() == 0L) {
-            long duration = scene.actorIds().stream()
-                    .map(actorManager::get)
-                    .flatMap(Optional::stream)
-                    .mapToLong(actor -> actor.recording().durationTicks())
-                    .max().orElse(0L);
+            long duration = scene.actorIds().stream().map(actorManager::get).flatMap(Optional::stream)
+                    .mapToLong(actor -> actor.recording().durationTicks()).max().orElse(0L);
             scene.timeline().setDurationTicks(duration);
         }
-
         int started = 0;
         for (ActorId actorId : scene.actorIds()) {
             Optional<ActorDefinition> actor = actorManager.get(actorId);
@@ -83,6 +101,7 @@ public final class SceneManager {
         ScenePlaybackSession session = new ScenePlaybackSession(scene);
         activeSessions.put(viewer.getUniqueId(), session);
         playbackController.tickScene(viewer, scene.actorIds(), session.cursor().tick());
+        sceneCameras.camera(scene).ifPresent(camera -> cameraController.start(viewer, camera));
         return started;
     }
 
@@ -98,6 +117,7 @@ public final class SceneManager {
         ScenePlaybackSession session = activeSessions.remove(viewer.getUniqueId());
         if (session == null) return false;
         for (ActorId actorId : session.scene().actorIds()) playbackController.stop(viewer, actorId);
+        if (sceneCameras.camera(session.scene()).isPresent()) cameraController.stop(viewer);
         return true;
     }
 
@@ -112,5 +132,6 @@ public final class SceneManager {
     }
 
     public void stopAll(Player viewer) { stop(viewer); }
+    public void clear() { activeSessions.clear(); scenes.clear(); sceneCameras.clear(); }
     private static String normalize(String name) { return name.trim().toLowerCase(java.util.Locale.ROOT); }
 }
