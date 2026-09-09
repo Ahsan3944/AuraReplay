@@ -1,5 +1,6 @@
 package com.ultraop.aurareplay.actor;
 
+import com.ultraop.aurareplay.motion.MotionStack;
 import com.ultraop.aurareplay.recording.Recording;
 
 import java.util.Objects;
@@ -10,6 +11,7 @@ public final class ActorDefinition {
     private final Recording recording;
     private final UUID sourceEntityUuid;
     private final Integer sourceEntityId;
+    private final MotionStack motionStack = new MotionStack();
     private String name;
     private String namePrefix = "";
     private String nameSuffix = "";
@@ -42,6 +44,7 @@ public final class ActorDefinition {
     public Recording recording() { return recording; }
     public UUID sourceEntityUuid() { return sourceEntityUuid; }
     public Integer sourceEntityId() { return sourceEntityId; }
+    public MotionStack motionStack() { return motionStack; }
     public String name() { return name; }
     public String namePrefix() { return namePrefix; }
     public String nameSuffix() { return nameSuffix; }
