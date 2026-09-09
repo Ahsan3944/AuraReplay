@@ -1,11 +1,13 @@
 package com.ultraop.aurareplay.nms;
 
 import com.mojang.authlib.GameProfile;
+import com.mojang.authlib.properties.Property;
 import com.mojang.datafixers.util.Pair;
 import com.ultraop.aurareplay.actor.ActorDefinition;
 import com.ultraop.aurareplay.actor.ActorTransform;
 import com.ultraop.aurareplay.actor.VirtualActorBackend;
 import com.ultraop.aurareplay.recording.EntityFlags;
+import com.ultraop.aurareplay.recording.snapshot.EntityIdentitySnapshot;
 import com.ultraop.aurareplay.recording.snapshot.EntitySnapshot;
 import com.ultraop.aurareplay.recording.snapshot.EquipmentSnapshot;
 import net.kyori.adventure.text.Component;
@@ -43,20 +45,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Paper 1.21.11 renderer for virtual player actors.
- *
- * The fake ServerPlayer is never inserted into the world. Private ServerEntity
- * trackers emit only to the selected viewer, keeping actor visibility viewer-local.
- */
+/** Paper 1.21.11 renderer for viewer-local virtual player actors. */
 public final class NmsVirtualActorBackend implements VirtualActorBackend {
     private static final double DEFAULT_NAMETAG_HEIGHT = 2.15d;
     private final Map<UUID, Map<UUID, RenderedActor>> rendered = new HashMap<>();
 
     @Override
     public void spawn(ActorDefinition actor, Player viewer) {
-        RenderedActor existing = rendered
-                .computeIfAbsent(viewer.getUniqueId(), ignored -> new HashMap<>())
+        RenderedActor existing = rendered.computeIfAbsent(viewer.getUniqueId(), ignored -> new HashMap<>())
                 .get(actor.id().value());
         if (existing != null) {
             update(actor, viewer, actor.transform());
@@ -66,12 +62,14 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         ServerPlayer viewerHandle = ((CraftPlayer) viewer).getHandle();
         MinecraftServer server = ((CraftServer) Bukkit.getServer()).getServer();
         ServerLevel level = ((CraftWorld) viewer.getWorld()).getHandle();
+        EntityIdentitySnapshot identity = firstIdentity(actor);
 
         UUID fakeUuid = UUID.nameUUIDFromBytes(
-                ("AuraReplay:" + viewer.getUniqueId() + ":" + actor.id())
-                        .getBytes(StandardCharsets.UTF_8)
-        );
-        GameProfile profile = new GameProfile(fakeUuid, profileName(actor.name()));
+                ("AuraReplay:" + viewer.getUniqueId() + ":" + actor.id()).getBytes(StandardCharsets.UTF_8));
+        GameProfile profile = new GameProfile(fakeUuid, profileName(
+                identity == null ? actor.name() : identity.profileName()));
+        applySkin(profile, identity);
+
         ServerPlayer npc = new ServerPlayer(server, level, profile, ClientInformation.createDefault());
         ActorTransform transform = actor.transform();
         npc.setPos(transform.x(), transform.y(), transform.z());
@@ -83,12 +81,9 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         var scale = npc.getAttribute(Attributes.SCALE);
         if (scale != null) scale.setBaseValue(transform.scale());
 
-        Set<ServerPlayerConnection> trackedConnections = new HashSet<>();
         ServerEntity tracker = new ServerEntity(
                 level, npc, 1, true,
-                new ViewerSynchronizer(viewerHandle), trackedConnections
-        );
-
+                new ViewerSynchronizer(viewerHandle), new HashSet<>());
         RenderedActor state = new RenderedActor(npc, tracker, fakeUuid);
         rendered.get(viewer.getUniqueId()).put(actor.id().value(), state);
 
@@ -116,10 +111,7 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         npc.setYHeadRot(transform.yaw());
 
         var scale = npc.getAttribute(Attributes.SCALE);
-        if (scale != null && scale.getBaseValue() != transform.scale()) {
-            scale.setBaseValue(transform.scale());
-        }
-
+        if (scale != null && scale.getBaseValue() != transform.scale()) scale.setBaseValue(transform.scale());
         state.tracker().sendChanges();
         sendEntityDataIfDirty(viewer, npc);
         updateNametag(actor, viewer, state, transform);
@@ -133,12 +125,9 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         if (state == null) return;
 
         var connection = ((CraftPlayer) viewer).getHandle().connection;
-        if (state.nametag() != null) {
-            connection.send(new ClientboundRemoveEntitiesPacket(state.nametag().getId()));
-        }
+        if (state.nametag() != null) connection.send(new ClientboundRemoveEntitiesPacket(state.nametag().getId()));
         connection.send(new ClientboundRemoveEntitiesPacket(state.player().getId()));
         connection.send(new ClientboundPlayerInfoRemovePacket(List.of(state.profileUuid())));
-
         if (viewerActors.isEmpty()) rendered.remove(viewer.getUniqueId());
     }
 
@@ -153,7 +142,6 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
     public void updateEquipment(ActorDefinition actor, Player viewer, EntitySnapshot snapshot) {
         RenderedActor state = find(actor, viewer);
         if (state == null || snapshot == null) return;
-
         applyFlags(state.player(), snapshot.flags());
         EquipmentSnapshot equipment = snapshot.equipment();
         if (!sameEquipment(state.equipment(), equipment)) {
@@ -165,18 +153,14 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
 
     private void spawnNametag(ActorDefinition actor, Player viewer, RenderedActor state, ServerLevel level) {
         if (state.nametag() != null) return;
-
         Display.TextDisplay display = new Display.TextDisplay(EntityType.TEXT_DISPLAY, level);
         configureNametag(display, actor);
         positionNametag(display, actor.transform(), actor.nameHeightOffset());
-
         ServerPlayer viewerHandle = ((CraftPlayer) viewer).getHandle();
         ServerEntity tracker = new ServerEntity(
                 level, display, 1, false,
-                new ViewerSynchronizer(viewerHandle), new HashSet<>()
-        );
+                new ViewerSynchronizer(viewerHandle), new HashSet<>());
         state.setNametag(display, tracker);
-
         viewerHandle.connection.send(display.getAddEntityPacket(tracker));
         viewerHandle.connection.send(new ClientboundSetEntityDataPacket(
                 display.getId(), display.getEntityData().getNonDefaultValues()));
@@ -191,12 +175,10 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
             }
             return;
         }
-
         if (state.nametag() == null) {
             spawnNametag(actor, viewer, state, ((CraftWorld) viewer.getWorld()).getHandle());
             return;
         }
-
         configureNametag(state.nametag(), actor);
         positionNametag(state.nametag(), transform, actor.nameHeightOffset());
         state.nametagTracker().sendChanges();
@@ -205,8 +187,7 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
 
     private void configureNametag(Display.TextDisplay display, ActorDefinition actor) {
         TextDisplay bukkitDisplay = (TextDisplay) display.getBukkitEntity();
-        bukkitDisplay.text(Component.text(
-                actor.namePrefix() + actor.name() + actor.nameSuffix()));
+        bukkitDisplay.text(Component.text(actor.namePrefix() + actor.name() + actor.nameSuffix()));
         bukkitDisplay.setBillboard(org.bukkit.entity.Display.Billboard.CENTER);
         bukkitDisplay.setShadowed(true);
         bukkitDisplay.setSeeThrough(true);
@@ -216,8 +197,7 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
     }
 
     private void positionNametag(Display.TextDisplay display, ActorTransform transform, double offset) {
-        double y = transform.y() + DEFAULT_NAMETAG_HEIGHT + transform.scale() * 0.35d + offset;
-        display.setPos(transform.x(), y, transform.z());
+        display.setPos(transform.x(), transform.y() + DEFAULT_NAMETAG_HEIGHT + transform.scale() * 0.35d + offset, transform.z());
     }
 
     private void applyFlags(ServerPlayer npc, int flags) {
@@ -232,9 +212,7 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
     }
 
     private void sendEquipment(Player viewer, ServerPlayer npc, EquipmentSnapshot equipment) {
-        EquipmentSnapshot safe = equipment == null
-                ? new EquipmentSnapshot(null, null, null, null, null, null) : equipment;
-
+        EquipmentSnapshot safe = equipment == null ? new EquipmentSnapshot(null, null, null, null, null, null) : equipment;
         List<Pair<EquipmentSlot, net.minecraft.world.item.ItemStack>> slots = new ArrayList<>();
         slots.add(Pair.of(EquipmentSlot.MAINHAND, toNms(safe.mainHand())));
         slots.add(Pair.of(EquipmentSlot.OFFHAND, toNms(safe.offHand())));
@@ -242,9 +220,7 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         slots.add(Pair.of(EquipmentSlot.CHEST, toNms(safe.chestplate())));
         slots.add(Pair.of(EquipmentSlot.LEGS, toNms(safe.leggings())));
         slots.add(Pair.of(EquipmentSlot.FEET, toNms(safe.boots())));
-
-        ((CraftPlayer) viewer).getHandle().connection.send(
-                new ClientboundSetEquipmentPacket(npc.getId(), slots));
+        ((CraftPlayer) viewer).getHandle().connection.send(new ClientboundSetEquipmentPacket(npc.getId(), slots));
     }
 
     private static net.minecraft.world.item.ItemStack toNms(org.bukkit.inventory.ItemStack item) {
@@ -270,21 +246,40 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
     private void sendEntityDataIfDirty(Player viewer, ServerPlayer npc) {
         List<?> values = npc.getEntityData().packDirty();
         if (!values.isEmpty()) {
-            ((CraftPlayer) viewer).getHandle().connection.send(
-                    new ClientboundSetEntityDataPacket(npc.getId(), (List) values));
+            ((CraftPlayer) viewer).getHandle().connection.send(new ClientboundSetEntityDataPacket(npc.getId(), (List) values));
         }
     }
 
     private void sendEntityDataIfDirty(Player viewer, Display.TextDisplay display) {
         List<?> values = display.getEntityData().packDirty();
         if (!values.isEmpty()) {
-            ((CraftPlayer) viewer).getHandle().connection.send(
-                    new ClientboundSetEntityDataPacket(display.getId(), (List) values));
+            ((CraftPlayer) viewer).getHandle().connection.send(new ClientboundSetEntityDataPacket(display.getId(), (List) values));
         }
     }
 
     private RenderedActor find(ActorDefinition actor, Player viewer) {
         return rendered.getOrDefault(viewer.getUniqueId(), Map.of()).get(actor.id().value());
+    }
+
+    private static EntityIdentitySnapshot firstIdentity(ActorDefinition actor) {
+        for (var frame : actor.recording().frames()) {
+            for (var entity : frame.entities()) {
+                if (actor.sourceEntityUuid() != null && actor.sourceEntityUuid().equals(entity.uuid())) return entity.identity();
+                if (actor.sourceEntityId() != null && actor.sourceEntityId().intValue() == entity.entityId()) return entity.identity();
+                if (actor.sourceEntityUuid() == null && actor.sourceEntityId() == null) return entity.identity();
+            }
+        }
+        return null;
+    }
+
+    private static void applySkin(GameProfile profile, EntityIdentitySnapshot identity) {
+        if (identity == null || identity.skinTextureValue() == null || identity.skinTextureValue().isBlank()) return;
+        if (identity.skinTextureSignature() == null || identity.skinTextureSignature().isBlank()) {
+            profile.getProperties().put("textures", new Property("textures", identity.skinTextureValue()));
+        } else {
+            profile.getProperties().put("textures", new Property(
+                    "textures", identity.skinTextureValue(), identity.skinTextureSignature()));
+        }
     }
 
     private static String profileName(String name) {
@@ -305,7 +300,6 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
             this.tracker = tracker;
             this.profileUuid = profileUuid;
         }
-
         private ServerPlayer player() { return player; }
         private ServerEntity tracker() { return tracker; }
         private UUID profileUuid() { return profileUuid; }
@@ -313,36 +307,16 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         private void setEquipment(EquipmentSnapshot equipment) { this.equipment = equipment; }
         private Display.TextDisplay nametag() { return nametag; }
         private ServerEntity nametagTracker() { return nametagTracker; }
-        private void setNametag(Display.TextDisplay nametag, ServerEntity tracker) {
-            this.nametag = nametag;
-            this.nametagTracker = tracker;
-        }
-        private void clearNametag() {
-            this.nametag = null;
-            this.nametagTracker = null;
-        }
+        private void setNametag(Display.TextDisplay nametag, ServerEntity tracker) { this.nametag = nametag; this.nametagTracker = tracker; }
+        private void clearNametag() { this.nametag = null; this.nametagTracker = null; }
     }
 
     private static final class ViewerSynchronizer implements ServerEntity.Synchronizer {
         private final ServerPlayer viewer;
-
         private ViewerSynchronizer(ServerPlayer viewer) { this.viewer = viewer; }
-
-        @Override
-        public void sendToTrackingPlayers(Packet<? super ClientGamePacketListener> packet) {
-            viewer.connection.send(packet);
-        }
-
-        @Override
-        public void sendToTrackingPlayersAndSelf(Packet<? super ClientGamePacketListener> packet) {
-            viewer.connection.send(packet);
-        }
-
-        @Override
-        public void sendToTrackingPlayersFiltered(
-                Packet<? super ClientGamePacketListener> packet,
-                java.util.function.Predicate<ServerPlayer> predicate
-        ) {
+        @Override public void sendToTrackingPlayers(Packet<? super ClientGamePacketListener> packet) { viewer.connection.send(packet); }
+        @Override public void sendToTrackingPlayersAndSelf(Packet<? super ClientGamePacketListener> packet) { viewer.connection.send(packet); }
+        @Override public void sendToTrackingPlayersFiltered(Packet<? super ClientGamePacketListener> packet, java.util.function.Predicate<ServerPlayer> predicate) {
             if (predicate.test(viewer)) viewer.connection.send(packet);
         }
     }
