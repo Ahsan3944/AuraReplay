@@ -7,17 +7,29 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 
 /** Main-thread playback coordinator. Each viewer receives an independent cursor/session. */
 public final class ActorPlaybackController {
     private final VirtualActorBackend backend;
     private final Map<UUID, Map<ActorId, ActorPlayback>> sessions = new HashMap<>();
+    private Function<ActorDefinition, ActorPlaybackSource> sourceFactory = actor -> null;
 
     public ActorPlaybackController(VirtualActorBackend backend) { this.backend = backend; }
 
+    /** Installs the durable recording source used for newly created playback sessions. */
+    public void setSourceFactory(Function<ActorDefinition, ActorPlaybackSource> sourceFactory) {
+        this.sourceFactory = sourceFactory == null ? actor -> null : sourceFactory;
+    }
+
     public void start(Player viewer, ActorDefinition actor) {
         Map<ActorId, ActorPlayback> viewerSessions = sessions.computeIfAbsent(viewer.getUniqueId(), ignored -> new HashMap<>());
-        ActorPlayback playback = new ActorPlayback(actor);
+        ActorPlaybackSource source = sourceFactory.apply(actor);
+        ActorPlayback playback = source == null ? new ActorPlayback(actor) : new ActorPlayback(actor, source);
+        if (source instanceof IndexedActorPlaybackSource indexed) {
+            try { indexed.prefetch(actor.reverse() ? Math.max(0, indexed.frameCount() - 1) : 0, IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS); }
+            catch (Exception ignored) { }
+        }
         viewerSessions.put(actor.id(), playback);
         if (actor.visible()) {
             backend.spawn(actor, viewer);
@@ -39,6 +51,7 @@ public final class ActorPlaybackController {
                 continue;
             }
             if (!actor.frozen()) playback.setScenePosition(sceneTick);
+            prefetch(playback);
             render(playback, viewer);
         }
     }
@@ -55,6 +68,7 @@ public final class ActorPlaybackController {
                 continue;
             }
             playback.tick();
+            prefetch(playback);
             render(playback, viewer);
         }
     }
@@ -76,6 +90,13 @@ public final class ActorPlaybackController {
     public void tick(Player viewer) { tickStandalone(viewer, Set.of()); }
     public void clear() { sessions.clear(); }
     public int sessionCount() { return sessions.values().stream().mapToInt(Map::size).sum(); }
+
+    private void prefetch(ActorPlayback playback) {
+        if (!(playback.source() instanceof IndexedActorPlaybackSource indexed) || indexed.frameCount() == 0) return;
+        int center = (int) Math.floor(Math.max(0.0d, playback.cursor().position()));
+        try { indexed.prefetch(center, IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS); }
+        catch (Exception ignored) { }
+    }
 
     private void render(ActorPlayback playback, Player viewer) {
         ActorSample sample = playback.sampleState();
