@@ -1,5 +1,6 @@
 package com.ultraop.aurareplay.recording;
 
+import com.ultraop.aurareplay.recording.snapshot.EntityIdentitySnapshot;
 import com.ultraop.aurareplay.recording.snapshot.EntitySnapshot;
 import com.ultraop.aurareplay.recording.snapshot.EquipmentSnapshot;
 import com.ultraop.aurareplay.recording.snapshot.TickSnapshot;
@@ -7,6 +8,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.profile.PlayerProfile;
+import org.bukkit.profile.ProfileProperty;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -69,6 +72,7 @@ public final class TickRecorder {
         var location = entity.getLocation();
         var velocity = entity.getVelocity();
         int flags = 0;
+        EntityIdentitySnapshot identity = null;
 
         if (entity instanceof Player player) {
             if (player.isSneaking()) flags |= EntityFlags.SNEAKING;
@@ -77,6 +81,7 @@ public final class TickRecorder {
             if (player.isInvisible()) flags |= EntityFlags.INVISIBLE;
             if (player.isGlowing()) flags |= EntityFlags.GLOWING;
             if (player.isSprinting()) flags |= EntityFlags.SPRINTING;
+            identity = captureIdentity(player);
         }
         if (entity.getFireTicks() > 0) flags |= EntityFlags.ON_FIRE;
 
@@ -85,7 +90,25 @@ public final class TickRecorder {
                 location.getX(), location.getY(), location.getZ(),
                 location.getYaw(), location.getPitch(),
                 velocity.getX(), velocity.getY(), velocity.getZ(),
-                flags, EquipmentSnapshot.capture(entity), true
+                flags, EquipmentSnapshot.capture(entity), identity, true
+        );
+    }
+
+    private EntityIdentitySnapshot captureIdentity(Player player) {
+        PlayerProfile profile = player.getPlayerProfile();
+        String texture = null;
+        String signature = null;
+        for (ProfileProperty property : profile.getProperties()) {
+            if (!"textures".equals(property.getName())) continue;
+            texture = property.getValue();
+            signature = property.getSignature();
+            break;
+        }
+        return EntityIdentitySnapshot.of(
+                profile.getId() == null ? player.getUniqueId() : profile.getId(),
+                profile.getName() == null ? player.getName() : profile.getName(),
+                texture,
+                signature
         );
     }
 
