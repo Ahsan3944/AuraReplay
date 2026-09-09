@@ -1,5 +1,6 @@
 package com.ultraop.aurareplay.actor;
 
+import com.ultraop.aurareplay.motion.MotionEvaluator;
 import com.ultraop.aurareplay.recording.snapshot.EntitySnapshot;
 import com.ultraop.aurareplay.recording.snapshot.TickSnapshot;
 
@@ -8,10 +9,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Deterministic actor playback with sub-tick sampling and source-relative timing. */
+/** Deterministic actor playback with sub-tick sampling, source timing and motion layers. */
 public final class ActorPlayback {
     private final ActorDefinition actor;
     private final ActorPlaybackSource source;
+    private final MotionEvaluator motionEvaluator = new MotionEvaluator();
     private final PlaybackCursor cursor = new PlaybackCursor();
     private long elapsedTicks;
 
@@ -58,7 +60,10 @@ public final class ActorPlayback {
     public ActorSample sampleAt(double position) {
         int count = source.frameCount();
         if (count <= 0 || !Double.isFinite(position)) return null;
-        double bounded = Math.max(0.0d, Math.min(position, count - 1.0d));
+
+        MotionEvaluator.Evaluation evaluation = motionEvaluator.evaluate(
+                position, count, actor.transform(), actor.motionStack());
+        double bounded = evaluation.sourcePosition();
         int lowerIndex = (int) Math.floor(bounded);
         int upperIndex = Math.min(count - 1, lowerIndex + 1);
         double alpha = bounded - lowerIndex;
@@ -72,7 +77,7 @@ public final class ActorPlayback {
         if (lower == null) return null;
 
         EntitySnapshot sampled = interpolate(lower, upper, alpha);
-        ActorTransform base = actor.transform();
+        ActorTransform base = evaluation.transform();
         ActorTransform transformed = new ActorTransform(
                 sampled.x() + base.x(), sampled.y() + base.y(), sampled.z() + base.z(),
                 normalizeDegrees(sampled.yaw() + base.yaw()), normalizeDegrees(sampled.pitch() + base.pitch()),
