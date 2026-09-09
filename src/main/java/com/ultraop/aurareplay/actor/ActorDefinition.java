@@ -3,10 +3,13 @@ package com.ultraop.aurareplay.actor;
 import com.ultraop.aurareplay.recording.Recording;
 
 import java.util.Objects;
+import java.util.UUID;
 
 public final class ActorDefinition {
     private final ActorId id;
     private final Recording recording;
+    private final UUID sourceEntityUuid;
+    private final Integer sourceEntityId;
     private String name;
     private double nameHeightOffset;
     private boolean nameVisible;
@@ -19,15 +22,24 @@ public final class ActorDefinition {
     private ActorTransform transform;
 
     public ActorDefinition(ActorId id, Recording recording, ActorTransform transform) {
+        this(id, recording, transform, null, null);
+    }
+
+    public ActorDefinition(ActorId id, Recording recording, ActorTransform transform,
+                           UUID sourceEntityUuid, Integer sourceEntityId) {
         this.id = Objects.requireNonNull(id);
         this.recording = Objects.requireNonNull(recording);
         this.transform = Objects.requireNonNull(transform);
+        this.sourceEntityUuid = sourceEntityUuid;
+        this.sourceEntityId = sourceEntityId;
         this.name = recording.name();
         this.nameVisible = true;
     }
 
     public ActorId id() { return id; }
     public Recording recording() { return recording; }
+    public UUID sourceEntityUuid() { return sourceEntityUuid; }
+    public Integer sourceEntityId() { return sourceEntityId; }
     public String name() { return name; }
     public double nameHeightOffset() { return nameHeightOffset; }
     public boolean nameVisible() { return nameVisible; }
