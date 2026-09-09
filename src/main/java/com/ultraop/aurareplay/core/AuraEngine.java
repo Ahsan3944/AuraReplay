@@ -6,18 +6,19 @@ import com.ultraop.aurareplay.actor.ActorPlaybackController;
 import com.ultraop.aurareplay.nms.NmsVirtualActorBackend;
 import com.ultraop.aurareplay.recording.RecordingManager;
 import com.ultraop.aurareplay.recording.TickRecorder;
+import com.ultraop.aurareplay.scene.SceneManager;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
 public final class AuraEngine {
-
     private final JavaPlugin plugin;
     private final ProtocolManager protocolManager;
     private final TickRecorder tickRecorder;
     private final RecordingManager recordingManager;
     private final ActorManager actorManager;
     private final ActorPlaybackController actorPlaybackController;
+    private final SceneManager sceneManager;
     private BukkitTask playbackTask;
 
     public AuraEngine(JavaPlugin plugin, ProtocolManager protocolManager) {
@@ -27,6 +28,7 @@ public final class AuraEngine {
         this.recordingManager = new RecordingManager();
         this.actorManager = new ActorManager();
         this.actorPlaybackController = new ActorPlaybackController(new NmsVirtualActorBackend());
+        this.sceneManager = new SceneManager(actorManager, actorPlaybackController);
     }
 
     public void start() {
@@ -51,4 +53,5 @@ public final class AuraEngine {
     public RecordingManager recordingManager() { return recordingManager; }
     public ActorManager actorManager() { return actorManager; }
     public ActorPlaybackController actorPlaybackController() { return actorPlaybackController; }
+    public SceneManager sceneManager() { return sceneManager; }
 }
