@@ -35,11 +35,13 @@ public final class PersistenceCoordinator implements AutoCloseable {
 
     /** Validates the latest committed generation and restores the previous good database when it is inconsistent. */
     public void recoverIfNeeded() {
+        boolean valid;
         try {
-            if (validateCheckpoint()) return;
-        } catch (RuntimeException ignored) {
-            // Fall through to backup recovery.
+            valid = validateCheckpoint();
+        } catch (SQLException e) {
+            valid = false;
         }
+        if (valid) return;
         if (!Files.isRegularFile(backupFile)) return;
         try {
             Path temp = databaseFile.toPath().resolveSibling("aurareplay.db.recovery.tmp");
@@ -47,7 +49,11 @@ public final class PersistenceCoordinator implements AutoCloseable {
             try (Connection c = open(temp)) {
                 if (!validateCheckpoint(c)) throw new IllegalStateException("backup checkpoint is invalid");
             }
-            Files.move(temp, databaseFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            try {
+                Files.move(temp, databaseFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(temp, databaseFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (Exception e) {
             try {
                 Files.deleteIfExists(databaseFile.toPath().resolveSibling("aurareplay.db.recovery.tmp"));
@@ -141,7 +147,11 @@ public final class PersistenceCoordinator implements AutoCloseable {
                     s.executeUpdate("VACUUM INTO '" + escaped + "'");
                 }
             }
-            Files.move(temp, backupFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            try {
+                Files.move(temp, backupFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(temp, backupFile, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (Exception ignored) {
             try { Files.deleteIfExists(temp); } catch (Exception ignoredAgain) { }
         }
