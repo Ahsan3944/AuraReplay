@@ -7,6 +7,7 @@ import com.ultraop.aurareplay.recording.RecordingSourceCatalog;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 
 import java.util.List;
@@ -32,9 +33,10 @@ public final class ActorSourceBrowserListener implements Listener {
         int slot = event.getRawSlot();
         if (holder.recordingName() == null) {
             if (slot == 26) { player.closeInventory(); return; }
+            if (slot == 25) { player.sendMessage("Use /aurareplay actor list to manage existing actors."); return; }
             List<Recording> recordings = engine.recordingManager().all().stream()
                     .sorted((a, b) -> a.name().compareToIgnoreCase(b.name())).toList();
-            if (slot >= 0 && slot < recordings.size() && slot < 26) browser.openSources(player, recordings.get(slot));
+            if (slot >= 0 && slot < recordings.size() && slot < 25) browser.openSources(player, recordings.get(slot));
             return;
         }
 
