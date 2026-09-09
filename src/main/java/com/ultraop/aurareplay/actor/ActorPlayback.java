@@ -14,9 +14,7 @@ public final class ActorPlayback {
 
     public ActorPlayback(ActorDefinition actor) {
         this.actor = Objects.requireNonNull(actor);
-        if (actor.reverse() && actor.recording().durationTicks() > 0) {
-            cursor.setPosition(actor.recording().durationTicks() - 1.0d);
-        }
+        reset();
     }
 
     public ActorDefinition actor() { return actor; }
@@ -26,13 +24,23 @@ public final class ActorPlayback {
     public void tick() {
         elapsedTicks++;
         if (actor.frozen() || elapsedTicks <= actor.startDelayTicks()) return;
-        cursor.advance(
-                1.0d,
-                actor.playbackSpeed(),
-                actor.reverse(),
-                actor.recording().durationTicks(),
-                actor.loop()
-        );
+        cursor.advance(1.0d, actor.playbackSpeed(), actor.reverse(), actor.recording().durationTicks(), actor.loop());
+    }
+
+    /** Positions this actor from a shared scene-time clock without mutating the scene clock. */
+    public void setScenePosition(double sceneTick) {
+        if (!Double.isFinite(sceneTick)) return;
+        double local = sceneTick - actor.startDelayTicks();
+        if (local < 0.0d) local = 0.0d;
+        double duration = Math.max(0.0d, actor.recording().durationTicks());
+        double position = local * actor.playbackSpeed();
+        if (actor.reverse() && duration > 0.0d) position = duration - 1.0d - position;
+        if (actor.loop() && duration > 0.0d) {
+            position %= duration;
+            if (position < 0.0d) position += duration;
+        }
+        cursor.setPosition(position);
+        elapsedTicks = Math.max(elapsedTicks, (long) Math.floor(Math.max(0.0d, sceneTick)));
     }
 
     public void reset() {
@@ -50,10 +58,15 @@ public final class ActorPlayback {
     }
 
     public ActorSample sampleState() {
+        return sampleAt(cursor.position());
+    }
+
+    /** Samples the immutable recording at an explicit local timeline position. */
+    public ActorSample sampleAt(double position) {
         List<TickSnapshot> frames = actor.recording().frames();
         if (frames.isEmpty()) return null;
 
-        double position = Math.max(0.0d, Math.min(cursor.position(), frames.size() - 1.0d));
+        position = Math.max(0.0d, Math.min(position, frames.size() - 1.0d));
         int lowerIndex = (int) Math.floor(position);
         int upperIndex = Math.min(frames.size() - 1, lowerIndex + 1);
         double alpha = position - lowerIndex;
@@ -67,13 +80,10 @@ public final class ActorPlayback {
         EntitySnapshot sampled = interpolate(lower, upper, alpha);
         ActorTransform base = actor.transform();
         ActorTransform transformed = new ActorTransform(
-                sampled.x() + base.x(),
-                sampled.y() + base.y(),
-                sampled.z() + base.z(),
+                sampled.x() + base.x(), sampled.y() + base.y(), sampled.z() + base.z(),
                 normalizeDegrees(sampled.yaw() + base.yaw()),
                 normalizeDegrees(sampled.pitch() + base.pitch()),
-                base.roll(),
-                base.scale()
+                base.roll(), base.scale()
         );
         return new ActorSample(sampled, transformed, position);
     }
@@ -81,11 +91,7 @@ public final class ActorPlayback {
     private EntitySnapshot findSource(TickSnapshot frame) {
         UUID sourceUuid = actor.sourceEntityUuid();
         Integer sourceId = actor.sourceEntityId();
-
-        if (sourceUuid == null && sourceId == null) {
-            return frame.entities().isEmpty() ? null : frame.entities().get(0);
-        }
-
+        if (sourceUuid == null && sourceId == null) return frame.entities().isEmpty() ? null : frame.entities().get(0);
         for (EntitySnapshot entity : frame.entities()) {
             if (sourceUuid != null && sourceUuid.equals(entity.uuid())) return entity;
             if (sourceId != null && sourceId.intValue() == entity.entityId()) return entity;
@@ -96,30 +102,21 @@ public final class ActorPlayback {
     private EntitySnapshot interpolate(EntitySnapshot a, EntitySnapshot b, double alpha) {
         if (a == b || alpha <= 0.0d) return a;
         if (alpha >= 1.0d) return b;
-
         float yaw = interpolateAngle(a.yaw(), b.yaw(), alpha);
         float pitch = (float) lerp(a.pitch(), b.pitch(), alpha);
         return new EntitySnapshot(
-                a.entityId(),
-                a.uuid(),
-                a.type(),
-                lerp(a.x(), b.x(), alpha),
-                lerp(a.y(), b.y(), alpha),
-                lerp(a.z(), b.z(), alpha),
-                yaw,
-                pitch,
-                lerp(a.velocityX(), b.velocityX(), alpha),
-                lerp(a.velocityY(), b.velocityY(), alpha),
-                lerp(a.velocityZ(), b.velocityZ(), alpha),
+                a.entityId(), a.uuid(), a.type(),
+                lerp(a.x(), b.x(), alpha), lerp(a.y(), b.y(), alpha), lerp(a.z(), b.z(), alpha),
+                yaw, pitch,
+                lerp(a.velocityX(), b.velocityX(), alpha), lerp(a.velocityY(), b.velocityY(), alpha), lerp(a.velocityZ(), b.velocityZ(), alpha),
                 alpha < 0.5d ? a.flags() : b.flags(),
                 alpha < 0.5d ? a.equipment() : b.equipment(),
+                alpha < 0.5d ? a.identity() : b.identity(),
                 a.exists() && b.exists()
         );
     }
 
-    private static double lerp(double a, double b, double alpha) {
-        return a + (b - a) * alpha;
-    }
+    private static double lerp(double a, double b, double alpha) { return a + (b - a) * alpha; }
 
     private static float interpolateAngle(float a, float b, double alpha) {
         float delta = normalizeDegrees(b - a);
