@@ -3,7 +3,9 @@ package com.ultraop.aurareplay.actor;
 import org.bukkit.entity.Player;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** Main-thread playback coordinator. Each viewer receives an independent cursor/session. */
@@ -11,9 +13,7 @@ public final class ActorPlaybackController {
     private final VirtualActorBackend backend;
     private final Map<UUID, Map<ActorId, ActorPlayback>> sessions = new HashMap<>();
 
-    public ActorPlaybackController(VirtualActorBackend backend) {
-        this.backend = backend;
-    }
+    public ActorPlaybackController(VirtualActorBackend backend) { this.backend = backend; }
 
     public void start(Player viewer, ActorDefinition actor) {
         Map<ActorId, ActorPlayback> viewerSessions = sessions.computeIfAbsent(viewer.getUniqueId(), ignored -> new HashMap<>());
@@ -43,6 +43,22 @@ public final class ActorPlaybackController {
         }
     }
 
+    /** Advances ordinary actor sessions while leaving scene-owned actors to SceneManager. */
+    public void tickStandalone(Player viewer, Set<ActorId> excluded) {
+        Map<ActorId, ActorPlayback> viewerSessions = sessions.get(viewer.getUniqueId());
+        if (viewerSessions == null) return;
+        for (ActorPlayback playback : new HashSet<>(viewerSessions.values())) {
+            if (excluded.contains(playback.actor().id())) continue;
+            ActorDefinition actor = playback.actor();
+            if (!actor.visible()) {
+                backend.destroy(actor, viewer);
+                continue;
+            }
+            playback.tick();
+            render(playback, viewer);
+        }
+    }
+
     public void stop(Player viewer, ActorId actorId) {
         Map<ActorId, ActorPlayback> viewerSessions = sessions.get(viewer.getUniqueId());
         if (viewerSessions == null) return;
@@ -57,20 +73,7 @@ public final class ActorPlaybackController {
         for (ActorPlayback playback : viewerSessions.values()) backend.destroy(playback.actor(), viewer);
     }
 
-    public void tick(Player viewer) {
-        Map<ActorId, ActorPlayback> viewerSessions = sessions.get(viewer.getUniqueId());
-        if (viewerSessions == null) return;
-        for (ActorPlayback playback : viewerSessions.values()) {
-            ActorDefinition actor = playback.actor();
-            if (!actor.visible()) {
-                backend.destroy(actor, viewer);
-                continue;
-            }
-            playback.tick();
-            render(playback, viewer);
-        }
-    }
-
+    public void tick(Player viewer) { tickStandalone(viewer, Set.of()); }
     public void clear() { sessions.clear(); }
     public int sessionCount() { return sessions.values().stream().mapToInt(Map::size).sum(); }
 
