@@ -6,6 +6,8 @@ authors: [Ahsan3944]
 description: Next-generation server-side Minecraft Motion Capture & Performance Editing Studio.
 website: https://github.com/Ahsan3944/AuraReplay
 depend: [ProtocolLib]
+libraries:
+  - org.xerial:sqlite-jdbc:3.53.4.0
 commands:
   aurareplay:
     description: AuraReplay Motion Capture Studio
