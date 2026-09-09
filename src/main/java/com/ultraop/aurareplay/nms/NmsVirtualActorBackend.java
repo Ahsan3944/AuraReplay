@@ -1,29 +1,37 @@
 package com.ultraop.aurareplay.nms;
 
 import com.mojang.authlib.GameProfile;
+import com.mojang.datafixers.util.Pair;
 import com.ultraop.aurareplay.actor.ActorDefinition;
 import com.ultraop.aurareplay.actor.ActorTransform;
 import com.ultraop.aurareplay.actor.VirtualActorBackend;
+import com.ultraop.aurareplay.recording.EntityFlags;
+import com.ultraop.aurareplay.recording.snapshot.EntitySnapshot;
+import com.ultraop.aurareplay.recording.snapshot.EquipmentSnapshot;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
+import net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerEntity;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerPlayerConnection;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import org.bukkit.Bukkit;
 import org.bukkit.craftbukkit.CraftServer;
 import org.bukkit.craftbukkit.CraftWorld;
+import org.bukkit.craftbukkit.entity.CraftItemStack;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -156,9 +164,73 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
     }
 
     @Override
-    public void updateEquipment(ActorDefinition actor, Player viewer) {
-        // Equipment synchronization is the next renderer layer; this method remains
-        // separate so the actor domain never depends on NMS equipment types.
+    public void updateEquipment(ActorDefinition actor, Player viewer, EntitySnapshot snapshot) {
+        RenderedActor state = find(actor, viewer);
+        if (state == null || snapshot == null) return;
+
+        applyFlags(state.player(), snapshot.flags());
+
+        EquipmentSnapshot equipment = snapshot.equipment();
+        if (!sameEquipment(state.equipment(), equipment)) {
+            sendEquipment(viewer, state.player(), equipment);
+            state.setEquipment(equipment);
+        }
+
+        sendEntityDataIfDirty(viewer, state.player());
+    }
+
+    private void applyFlags(ServerPlayer npc, int flags) {
+        Player bukkitPlayer = npc.getBukkitEntity();
+        bukkitPlayer.setSneaking(hasFlag(flags, EntityFlags.SNEAKING));
+        bukkitPlayer.setSwimming(hasFlag(flags, EntityFlags.SWIMMING));
+        bukkitPlayer.setGliding(hasFlag(flags, EntityFlags.GLIDING));
+        bukkitPlayer.setInvisible(hasFlag(flags, EntityFlags.INVISIBLE));
+        bukkitPlayer.setGlowing(hasFlag(flags, EntityFlags.GLOWING));
+        bukkitPlayer.setFireTicks(hasFlag(flags, EntityFlags.ON_FIRE) ? 20 : 0);
+    }
+
+    private void sendEquipment(Player viewer, ServerPlayer npc, EquipmentSnapshot equipment) {
+        EquipmentSnapshot safe = equipment;
+        if (safe == null) {
+            safe = new EquipmentSnapshot(null, null, null, null, null, null);
+        }
+
+        List<Pair<EquipmentSlot, net.minecraft.world.item.ItemStack>> slots = new ArrayList<>();
+        slots.add(Pair.of(EquipmentSlot.MAINHAND, toNms(safe.mainHand())));
+        slots.add(Pair.of(EquipmentSlot.OFFHAND, toNms(safe.offHand())));
+        slots.add(Pair.of(EquipmentSlot.HEAD, toNms(safe.helmet())));
+        slots.add(Pair.of(EquipmentSlot.CHEST, toNms(safe.chestplate())));
+        slots.add(Pair.of(EquipmentSlot.LEGS, toNms(safe.leggings())));
+        slots.add(Pair.of(EquipmentSlot.FEET, toNms(safe.boots())));
+
+        ((CraftPlayer) viewer).getHandle().connection.send(
+                new ClientboundSetEquipmentPacket(npc.getId(), slots)
+        );
+    }
+
+    private static net.minecraft.world.item.ItemStack toNms(org.bukkit.inventory.ItemStack item) {
+        return item == null ? net.minecraft.world.item.ItemStack.EMPTY : CraftItemStack.asNMSCopy(item);
+    }
+
+    private static boolean sameEquipment(EquipmentSnapshot a, EquipmentSnapshot b) {
+        if (a == b) return true;
+        if (a == null || b == null) return false;
+        return sameItem(a.mainHand(), b.mainHand())
+                && sameItem(a.offHand(), b.offHand())
+                && sameItem(a.helmet(), b.helmet())
+                && sameItem(a.chestplate(), b.chestplate())
+                && sameItem(a.leggings(), b.leggings())
+                && sameItem(a.boots(), b.boots());
+    }
+
+    private static boolean sameItem(org.bukkit.inventory.ItemStack a, org.bukkit.inventory.ItemStack b) {
+        if (a == b) return true;
+        if (a == null || b == null) return a == null && b == null;
+        return a.isSimilar(b) && a.getAmount() == b.getAmount();
+    }
+
+    private static boolean hasFlag(int flags, int flag) {
+        return (flags & flag) != 0;
     }
 
     private void sendEntityDataIfDirty(Player viewer, ServerPlayer npc) {
@@ -190,7 +262,24 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         return clean.length() <= 16 ? clean : clean.substring(0, 16);
     }
 
-    private record RenderedActor(ServerPlayer player, ServerEntity tracker, UUID profileUuid) {}
+    private static final class RenderedActor {
+        private final ServerPlayer player;
+        private final ServerEntity tracker;
+        private final UUID profileUuid;
+        private EquipmentSnapshot equipment;
+
+        private RenderedActor(ServerPlayer player, ServerEntity tracker, UUID profileUuid) {
+            this.player = player;
+            this.tracker = tracker;
+            this.profileUuid = profileUuid;
+        }
+
+        private ServerPlayer player() { return player; }
+        private ServerEntity tracker() { return tracker; }
+        private UUID profileUuid() { return profileUuid; }
+        private EquipmentSnapshot equipment() { return equipment; }
+        private void setEquipment(EquipmentSnapshot equipment) { this.equipment = equipment; }
+    }
 
     private static final class ViewerSynchronizer implements ServerEntity.Synchronizer {
         private final ServerPlayer viewer;
