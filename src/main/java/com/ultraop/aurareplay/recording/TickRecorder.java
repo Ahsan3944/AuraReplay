@@ -76,6 +76,7 @@ public final class TickRecorder {
             if (player.isGliding()) flags |= EntityFlags.GLIDING;
             if (player.isInvisible()) flags |= EntityFlags.INVISIBLE;
             if (player.isGlowing()) flags |= EntityFlags.GLOWING;
+            if (player.isSprinting()) flags |= EntityFlags.SPRINTING;
         }
         if (entity.getFireTicks() > 0) flags |= EntityFlags.ON_FIRE;
 
