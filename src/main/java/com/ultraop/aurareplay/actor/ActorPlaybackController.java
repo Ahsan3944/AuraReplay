@@ -28,7 +28,6 @@ public final class ActorPlaybackController {
         if (actor.visible()) {
             backend.spawn(actor, viewer);
             backend.updateIdentity(actor, viewer);
-            backend.updateEquipment(actor, viewer);
         }
         render(playback, viewer);
     }
@@ -76,6 +75,6 @@ public final class ActorPlaybackController {
     private void render(ActorPlayback playback, Player viewer) {
         ActorSample sample = playback.sampleState();
         if (sample == null || !sample.exists()) return;
-        backend.update(playback.actor(), viewer, sample.transform());
+        backend.update(playback.actor(), viewer, sample);
     }
 }
