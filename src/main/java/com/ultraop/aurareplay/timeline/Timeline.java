@@ -17,11 +17,7 @@ public final class Timeline {
     private final List<TimelineKeyframe> keyframes = new ArrayList<>();
 
     public Timeline() { this(0L); }
-
-    public Timeline(long durationTicks) {
-        setDurationTicks(durationTicks);
-    }
-
+    public Timeline(long durationTicks) { setDurationTicks(durationTicks); }
     public long durationTicks() { return durationTicks; }
     public long inPoint() { return inPoint; }
     public long outPoint() { return outPoint; }
@@ -56,15 +52,16 @@ public final class Timeline {
     public void setReverse(boolean reverse) { this.reverse = reverse; }
 
     public void addMarker(TimelineMarker marker) {
+        Objects.requireNonNull(marker, "marker");
         markers.removeIf(existing -> existing.tick() == marker.tick());
-        markers.add(Objects.requireNonNull(marker));
+        markers.add(marker);
         markers.sort(Comparator.comparingLong(TimelineMarker::tick));
     }
 
     public boolean removeMarker(String id) { return markers.removeIf(marker -> marker.id().equals(id)); }
 
     public void addKeyframe(TimelineKeyframe keyframe) {
-        Objects.requireNonNull(keyframe);
+        Objects.requireNonNull(keyframe, "keyframe");
         if (keyframe.tick() > durationTicks) setDurationTicks(keyframe.tick());
         keyframes.removeIf(existing -> existing.tick() == keyframe.tick() && existing.channel().equals(keyframe.channel()));
         keyframes.add(keyframe);
@@ -73,5 +70,21 @@ public final class Timeline {
 
     public boolean removeKeyframe(long tick, String channel) {
         return keyframes.removeIf(keyframe -> keyframe.tick() == tick && keyframe.channel().equals(channel));
+    }
+
+    void replaceWith(TimelineState state) {
+        Objects.requireNonNull(state, "state");
+        durationTicks = state.durationTicks();
+        inPoint = state.inPoint();
+        outPoint = state.outPoint();
+        playbackSpeed = state.playbackSpeed();
+        loop = state.loop();
+        reverse = state.reverse();
+        markers.clear();
+        markers.addAll(state.markers());
+        markers.sort(Comparator.comparingLong(TimelineMarker::tick));
+        keyframes.clear();
+        keyframes.addAll(state.keyframes());
+        keyframes.sort(Comparator.comparingLong(TimelineKeyframe::tick));
     }
 }
