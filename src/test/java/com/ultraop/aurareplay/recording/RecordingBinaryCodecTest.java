@@ -9,8 +9,12 @@ import com.ultraop.aurareplay.recording.snapshot.TickSnapshot;
 import org.bukkit.entity.EntityType;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
+import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -39,8 +43,12 @@ class RecordingBinaryCodecTest {
 
     @Test
     void rejectsWrongHeader() throws Exception {
-        byte[] encoded = new RecordingBinaryCodec().encode(new Recording("x", 0, List.of()));
-        encoded[encoded.length - 1] ^= 0x01;
-        assertThrows(Exception.class, () -> new RecordingBinaryCodec().decode(encoded));
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        try (GZIPOutputStream gzip = new GZIPOutputStream(buffer);
+             DataOutputStream out = new DataOutputStream(gzip)) {
+            out.writeInt(0xDEADBEEF);
+            out.writeInt(2);
+        }
+        assertThrows(IOException.class, () -> new RecordingBinaryCodec().decode(buffer.toByteArray()));
     }
 }
