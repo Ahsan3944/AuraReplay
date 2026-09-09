@@ -33,9 +33,6 @@ import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
-import org.bukkit.util.Transformation;
-import org.joml.AxisAngle4f;
-import org.joml.Vector3f;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -81,8 +78,6 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         npc.setYRot(transform.yaw());
         npc.setXRot(transform.pitch());
         npc.setYHeadRot(transform.yaw());
-        // The dedicated TextDisplay below is the actor nametag. Keeping the
-        // ServerPlayer custom name hidden gives us a real height/offset control.
         npc.setCustomNameVisible(false);
 
         var scale = npc.getAttribute(Attributes.SCALE);
@@ -90,12 +85,8 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
 
         Set<ServerPlayerConnection> trackedConnections = new HashSet<>();
         ServerEntity tracker = new ServerEntity(
-                level,
-                npc,
-                1,
-                true,
-                new ViewerSynchronizer(viewerHandle),
-                trackedConnections
+                level, npc, 1, true,
+                new ViewerSynchronizer(viewerHandle), trackedConnections
         );
 
         RenderedActor state = new RenderedActor(npc, tracker, fakeUuid);
@@ -155,7 +146,6 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
     public void updateIdentity(ActorDefinition actor, Player viewer) {
         RenderedActor state = find(actor, viewer);
         if (state == null) return;
-
         updateNametag(actor, viewer, state, actor.transform());
     }
 
@@ -165,13 +155,11 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         if (state == null || snapshot == null) return;
 
         applyFlags(state.player(), snapshot.flags());
-
         EquipmentSnapshot equipment = snapshot.equipment();
         if (!sameEquipment(state.equipment(), equipment)) {
             sendEquipment(viewer, state.player(), equipment);
             state.setEquipment(equipment);
         }
-
         sendEntityDataIfDirty(viewer, state.player());
     }
 
@@ -180,16 +168,12 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
 
         Display.TextDisplay display = new Display.TextDisplay(EntityType.TEXT_DISPLAY, level);
         configureNametag(display, actor);
-        positionNametag(display, actor.transform());
+        positionNametag(display, actor.transform(), actor.nameHeightOffset());
 
         ServerPlayer viewerHandle = ((CraftPlayer) viewer).getHandle();
         ServerEntity tracker = new ServerEntity(
-                level,
-                display,
-                1,
-                false,
-                new ViewerSynchronizer(viewerHandle),
-                new HashSet<>()
+                level, display, 1, false,
+                new ViewerSynchronizer(viewerHandle), new HashSet<>()
         );
         state.setNametag(display, tracker);
 
@@ -213,54 +197,27 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
             return;
         }
 
-        TextDisplay display = (TextDisplay) state.nametag().getBukkitEntity();
-        configureNametag(display, actor);
-        positionNametag(state.nametag(), transform);
+        configureNametag(state.nametag(), actor);
+        positionNametag(state.nametag(), transform, actor.nameHeightOffset());
         state.nametagTracker().sendChanges();
         sendEntityDataIfDirty(viewer, state.nametag());
     }
 
     private void configureNametag(Display.TextDisplay display, ActorDefinition actor) {
-        display.setText(Component.text(actor.namePrefix() + actor.name() + actor.nameSuffix()));
-        display.setBillboard(Display.Billboard.CENTER);
-        display.setShadowed(true);
-        display.setSeeThrough(true);
-        display.setDefaultBackground(false);
-        display.setTextOpacity((byte) -1);
-        display.setLineWidth(200);
-        display.setTransformation(new Transformation(
-                new Vector3f(0.0f, 0.0f, 0.0f),
-                new AxisAngle4f(),
-                new Vector3f(1.0f, 1.0f, 1.0f),
-                new AxisAngle4f()
-        ));
+        TextDisplay bukkitDisplay = (TextDisplay) display.getBukkitEntity();
+        bukkitDisplay.text(Component.text(
+                actor.namePrefix() + actor.name() + actor.nameSuffix()));
+        bukkitDisplay.setBillboard(org.bukkit.entity.Display.Billboard.CENTER);
+        bukkitDisplay.setShadowed(true);
+        bukkitDisplay.setSeeThrough(true);
+        bukkitDisplay.setDefaultBackground(false);
+        bukkitDisplay.setTextOpacity((byte) -1);
+        bukkitDisplay.setLineWidth(200);
     }
 
-    private void configureNametag(TextDisplay display, ActorDefinition actor) {
-        display.text(Component.text(actor.namePrefix() + actor.name() + actor.nameSuffix()));
-        display.setBillboard(org.bukkit.entity.Display.Billboard.CENTER);
-        display.setShadowed(true);
-        display.setSeeThrough(true);
-        display.setDefaultBackground(false);
-        display.setTextOpacity((byte) -1);
-        display.setLineWidth(200);
-    }
-
-    private void positionNametag(Display.TextDisplay display, ActorTransform transform) {
-        display.setPos(transform.x(), transform.y() + DEFAULT_NAMETAG_HEIGHT + transform.scale() * 0.35d, transform.z());
-    }
-
-    private void positionNametag(TextDisplay display, ActorTransform transform) {
-        display.teleport(display.getLocation().clone().add(
-                transform.x() - display.getLocation().getX(),
-                transform.y() + DEFAULT_NAMETAG_HEIGHT + transform.scale() * 0.35d - display.getLocation().getY(),
-                transform.z() - display.getLocation().getZ()
-        ));
-    }
-
-    private void positionNametag(ServerEntity tracker, ActorTransform transform) {
-        Display.TextDisplay display = (Display.TextDisplay) tracker.getEntity();
-        positionNametag(display, transform);
+    private void positionNametag(Display.TextDisplay display, ActorTransform transform, double offset) {
+        double y = transform.y() + DEFAULT_NAMETAG_HEIGHT + transform.scale() * 0.35d + offset;
+        display.setPos(transform.x(), y, transform.z());
     }
 
     private void applyFlags(ServerPlayer npc, int flags) {
@@ -276,8 +233,7 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
 
     private void sendEquipment(Player viewer, ServerPlayer npc, EquipmentSnapshot equipment) {
         EquipmentSnapshot safe = equipment == null
-                ? new EquipmentSnapshot(null, null, null, null, null, null)
-                : equipment;
+                ? new EquipmentSnapshot(null, null, null, null, null, null) : equipment;
 
         List<Pair<EquipmentSlot, net.minecraft.world.item.ItemStack>> slots = new ArrayList<>();
         slots.add(Pair.of(EquipmentSlot.MAINHAND, toNms(safe.mainHand())));
@@ -331,17 +287,6 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         return rendered.getOrDefault(viewer.getUniqueId(), Map.of()).get(actor.id().value());
     }
 
-    private EntityType sourceType(ActorDefinition actor) {
-        for (var frame : actor.recording().frames()) {
-            for (var entity : frame.entities()) {
-                if (actor.sourceEntityUuid() != null && actor.sourceEntityUuid().equals(entity.uuid())) return entity.type();
-                if (actor.sourceEntityId() != null && actor.sourceEntityId().intValue() == entity.entityId()) return entity.type();
-                if (actor.sourceEntityUuid() == null && actor.sourceEntityId() == null) return entity.type();
-            }
-        }
-        return EntityType.PLAYER;
-    }
-
     private static String profileName(String name) {
         String clean = name == null || name.isBlank() ? "AuraActor" : name;
         return clean.length() <= 16 ? clean : clean.substring(0, 16);
@@ -384,10 +329,14 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         private ViewerSynchronizer(ServerPlayer viewer) { this.viewer = viewer; }
 
         @Override
-        public void sendToTrackingPlayers(Packet<? super ClientGamePacketListener> packet) { viewer.connection.send(packet); }
+        public void sendToTrackingPlayers(Packet<? super ClientGamePacketListener> packet) {
+            viewer.connection.send(packet);
+        }
 
         @Override
-        public void sendToTrackingPlayersAndSelf(Packet<? super ClientGamePacketListener> packet) { viewer.connection.send(packet); }
+        public void sendToTrackingPlayersAndSelf(Packet<? super ClientGamePacketListener> packet) {
+            viewer.connection.send(packet);
+        }
 
         @Override
         public void sendToTrackingPlayersFiltered(
