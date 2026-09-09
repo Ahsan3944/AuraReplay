@@ -4,6 +4,7 @@ import com.comphenix.protocol.ProtocolManager;
 import com.ultraop.aurareplay.actor.ActorManager;
 import com.ultraop.aurareplay.actor.ActorPlaybackController;
 import com.ultraop.aurareplay.camera.CameraController;
+import com.ultraop.aurareplay.camera.CameraManager;
 import com.ultraop.aurareplay.nms.NmsCameraBackend;
 import com.ultraop.aurareplay.nms.NmsVirtualActorBackend;
 import com.ultraop.aurareplay.recording.RecordingManager;
@@ -23,6 +24,7 @@ public final class AuraEngine {
     private final ActorPlaybackController actorPlaybackController;
     private final SceneManager sceneManager;
     private final SceneTimelineService sceneTimelineService;
+    private final CameraManager cameraManager;
     private final CameraController cameraController;
     private BukkitTask playbackTask;
 
@@ -35,32 +37,23 @@ public final class AuraEngine {
         this.actorPlaybackController = new ActorPlaybackController(new NmsVirtualActorBackend());
         this.sceneManager = new SceneManager(actorManager, actorPlaybackController);
         this.sceneTimelineService = new SceneTimelineService();
+        this.cameraManager = new CameraManager();
         this.cameraController = new CameraController(new NmsCameraBackend());
     }
 
     public void start() {
         if (playbackTask != null) return;
-        playbackTask = Bukkit.getScheduler().runTaskTimer(plugin, () ->
-                Bukkit.getOnlinePlayers().forEach(viewer -> {
-                    sceneManager.tick(viewer);
-                    actorPlaybackController.tickStandalone(viewer, sceneManager.activeActorIds(viewer));
-                    cameraController.tick(viewer);
-                }), 1L, 1L);
+        playbackTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> Bukkit.getOnlinePlayers().forEach(viewer -> {
+            sceneManager.tick(viewer);
+            actorPlaybackController.tickStandalone(viewer, sceneManager.activeActorIds(viewer));
+            cameraController.tick(viewer);
+        }), 1L, 1L);
     }
 
     public void shutdown() {
-        if (playbackTask != null) {
-            playbackTask.cancel();
-            playbackTask = null;
-        }
-        Bukkit.getOnlinePlayers().forEach(viewer -> {
-            actorPlaybackController.stopAll(viewer);
-            cameraController.stop(viewer);
-        });
-        actorPlaybackController.clear();
-        cameraController.clear();
-        sceneTimelineService.clear();
-        tickRecorder.shutdown();
+        if (playbackTask != null) { playbackTask.cancel(); playbackTask = null; }
+        Bukkit.getOnlinePlayers().forEach(viewer -> { actorPlaybackController.stopAll(viewer); cameraController.stop(viewer); });
+        actorPlaybackController.clear(); cameraController.clear(); cameraManager.clear(); sceneTimelineService.clear(); tickRecorder.shutdown();
     }
 
     public JavaPlugin plugin() { return plugin; }
@@ -71,5 +64,6 @@ public final class AuraEngine {
     public ActorPlaybackController actorPlaybackController() { return actorPlaybackController; }
     public SceneManager sceneManager() { return sceneManager; }
     public SceneTimelineService sceneTimelineService() { return sceneTimelineService; }
+    public CameraManager cameraManager() { return cameraManager; }
     public CameraController cameraController() { return cameraController; }
 }
