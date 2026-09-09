@@ -1,5 +1,8 @@
 package com.ultraop.aurareplay.command;
 
+import com.ultraop.aurareplay.actor.ActorDefinition;
+import com.ultraop.aurareplay.actor.ActorId;
+import com.ultraop.aurareplay.actor.ActorTransform;
 import com.ultraop.aurareplay.core.AuraEngine;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
@@ -10,6 +13,7 @@ import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public final class AuraReplayCommand implements CommandExecutor, TabCompleter {
 
@@ -35,6 +39,8 @@ public final class AuraReplayCommand implements CommandExecutor, TabCompleter {
             case "record" -> handleRecord(sender, args);
             case "stop" -> handleStop(sender, args);
             case "recordings", "list" -> handleList(sender);
+            case "actor" -> handleActor(sender, args);
+            case "actors" -> handleActors(sender);
             case "version" -> sender.sendMessage(ChatColor.AQUA + "AuraReplay 0.1.0-SNAPSHOT | Paper 1.21.11");
             default -> sendUsage(sender);
         }
@@ -45,9 +51,13 @@ public final class AuraReplayCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(ChatColor.GOLD + "=== AuraReplay Studio ===");
         sender.sendMessage(ChatColor.GRAY + "Recording: " + (engine.tickRecorder().isRecording() ? "RUNNING" : "IDLE"));
         sender.sendMessage(ChatColor.GRAY + "Saved captures: " + engine.recordingManager().all().size());
+        sender.sendMessage(ChatColor.GRAY + "Actors: " + engine.actorManager().all().size());
         sender.sendMessage(ChatColor.YELLOW + "/aurareplay record <name>");
         sender.sendMessage(ChatColor.YELLOW + "/aurareplay stop [name]");
         sender.sendMessage(ChatColor.YELLOW + "/aurareplay recordings");
+        sender.sendMessage(ChatColor.YELLOW + "/aurareplay actor spawn <recording>");
+        sender.sendMessage(ChatColor.YELLOW + "/aurareplay actor stop <id>");
+        sender.sendMessage(ChatColor.YELLOW + "/aurareplay actors");
     }
 
     private void handleRecord(CommandSender sender, String[] args) {
@@ -94,14 +104,105 @@ public final class AuraReplayCommand implements CommandExecutor, TabCompleter {
                         + ChatColor.GRAY + " — " + recording.durationTicks() + " ticks"));
     }
 
+    private void handleActor(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(ChatColor.RED + "Actor commands must be run by a player.");
+            return;
+        }
+        if (!player.hasPermission("aurareplay.actor")) {
+            sender.sendMessage(ChatColor.RED + "You do not have actor permission.");
+            return;
+        }
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.YELLOW + "/aurareplay actor <spawn|stop>");
+            return;
+        }
+
+        switch (args[1].toLowerCase()) {
+            case "spawn" -> spawnActor(player, args);
+            case "stop" -> stopActor(player, args);
+            default -> sender.sendMessage(ChatColor.YELLOW + "/aurareplay actor <spawn|stop>");
+        }
+    }
+
+    private void spawnActor(Player player, String[] args) {
+        if (args.length < 3) {
+            player.sendMessage(ChatColor.YELLOW + "/aurareplay actor spawn <recording>");
+            return;
+        }
+        var recording = engine.recordingManager().get(args[2]);
+        if (recording.isEmpty()) {
+            player.sendMessage(ChatColor.RED + "Recording not found: " + args[2]);
+            return;
+        }
+        var frames = recording.get().frames();
+        if (frames.isEmpty() || frames.get(0).entities().isEmpty()) {
+            player.sendMessage(ChatColor.RED + "Recording contains no entity data.");
+            return;
+        }
+
+        var source = frames.get(0).entities().get(0);
+        var location = player.getLocation();
+        ActorTransform transform = ActorTransform.origin(
+                location.getX(), location.getY(), location.getZ(),
+                location.getYaw(), location.getPitch()
+        );
+        ActorDefinition actor = engine.actorManager().create(
+                recording.get(), transform, source.uuid(), source.entityId()
+        );
+        actor.setName(recording.get().name());
+        engine.actorPlaybackController().start(player, actor);
+
+        player.sendMessage(ChatColor.GREEN + "Actor spawned: " + actor.id());
+    }
+
+    private void stopActor(Player player, String[] args) {
+        if (args.length < 3) {
+            player.sendMessage(ChatColor.YELLOW + "/aurareplay actor stop <id>");
+            return;
+        }
+        try {
+            ActorId id = new ActorId(UUID.fromString(args[2]));
+            var actor = engine.actorManager().get(id);
+            if (actor.isEmpty()) {
+                player.sendMessage(ChatColor.RED + "Actor not found: " + args[2]);
+                return;
+            }
+            engine.actorPlaybackController().stop(player, id);
+            engine.actorManager().remove(id);
+            player.sendMessage(ChatColor.GREEN + "Actor stopped.");
+        } catch (IllegalArgumentException exception) {
+            player.sendMessage(ChatColor.RED + "Invalid actor UUID.");
+        }
+    }
+
+    private void handleActors(CommandSender sender) {
+        sender.sendMessage(ChatColor.GOLD + "=== AuraReplay Actors ===");
+        if (engine.actorManager().all().isEmpty()) {
+            sender.sendMessage(ChatColor.GRAY + "No actors created.");
+            return;
+        }
+        engine.actorManager().all().forEach(actor ->
+                sender.sendMessage(ChatColor.YELLOW + actor.id() + ChatColor.GRAY + " — " + actor.name()));
+    }
+
     private void sendUsage(CommandSender sender) {
-        sender.sendMessage(ChatColor.YELLOW + "/aurareplay <studio|record <name>|stop [name]|recordings|version>");
+        sender.sendMessage(ChatColor.YELLOW + "/aurareplay <studio|record <name>|stop [name]|recordings|actor|actors|version>");
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return partial(args[0], List.of("studio", "record", "stop", "recordings", "list", "version"));
+            return partial(args[0], List.of("studio", "record", "stop", "recordings", "list", "actor", "actors", "version"));
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("actor")) {
+            return partial(args[1], List.of("spawn", "stop"));
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("actor") && args[1].equalsIgnoreCase("spawn")) {
+            return engine.recordingManager().all().stream().map(recording -> recording.name()).toList();
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("actor") && args[1].equalsIgnoreCase("stop")) {
+            return engine.actorManager().all().stream().map(actor -> actor.id().toString()).toList();
         }
         return List.of();
     }
