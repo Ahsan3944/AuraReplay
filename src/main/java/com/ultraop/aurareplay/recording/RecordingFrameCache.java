@@ -7,8 +7,10 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
-/** Small LRU frame cache for indexed playback. The cache is scoped to one recording path. */
+/** Bounded LRU cache for indexed playback. Disk misses can be prefetched off the server thread. */
 public final class RecordingFrameCache {
     private final Path path;
     private final int capacity;
@@ -33,7 +35,10 @@ public final class RecordingFrameCache {
         return loaded;
     }
 
-    /** Loads a bounded neighborhood around the requested frame for smooth sequential playback. */
+    /** Non-blocking cache lookup. Returns null when the frame is not warmed yet. */
+    public synchronized TickSnapshot peek(int frameIndex) { return frames.get(frameIndex); }
+
+    /** Loads a bounded neighborhood. Intended for an async executor, never the server tick thread. */
     public synchronized void prefetch(int center, int radius) throws IOException {
         if (radius < 0) throw new IllegalArgumentException("radius must be >= 0");
         int start = Math.max(0, center - radius);
@@ -41,6 +46,14 @@ public final class RecordingFrameCache {
         for (int i = start; i <= end; i++) {
             if (!frames.containsKey(i)) frames.put(i, RecordingIndexedFile.readFrame(path, i));
         }
+    }
+
+    public CompletableFuture<Void> prefetchAsync(int center, int radius, Executor executor) {
+        Objects.requireNonNull(executor, "executor");
+        return CompletableFuture.runAsync(() -> {
+            try { prefetch(center, radius); }
+            catch (IOException e) { throw new IllegalStateException("Could not prefetch recording frames", e); }
+        }, executor);
     }
 
     public synchronized void clear() { frames.clear(); }
