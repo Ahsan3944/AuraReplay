@@ -37,7 +37,7 @@ public final class AuraReplayPlugin extends JavaPlugin {
         Executor mainThreadExecutor=task->Bukkit.getScheduler().runTask(this,task);
         engine.actorPlaybackController().setMainThreadExecutor(mainThreadExecutor);
         engine.recordingManager().setDeletionListener(name -> mainThreadExecutor.execute(() -> {
-            engine.actorPlaybackController().stopUsingRecording(name);
+            for (var actor : engine.actorManager().usingRecording(name)) engine.sceneManager().removeActorEverywhere(actor.id());
             engine.actorManager().removeUsingRecording(name);
         }));
 
