@@ -16,5 +16,25 @@ public record EntitySnapshot(
         double velocityX,
         double velocityY,
         double velocityZ,
-        int flags
-) {}
+        int flags,
+        EquipmentSnapshot equipment,
+        boolean exists
+) {
+    public EntitySnapshot(
+            int entityId,
+            UUID uuid,
+            EntityType type,
+            double x,
+            double y,
+            double z,
+            float yaw,
+            float pitch,
+            double velocityX,
+            double velocityY,
+            double velocityZ,
+            int flags
+    ) {
+        this(entityId, uuid, type, x, y, z, yaw, pitch,
+                velocityX, velocityY, velocityZ, flags, null, true);
+    }
+}
