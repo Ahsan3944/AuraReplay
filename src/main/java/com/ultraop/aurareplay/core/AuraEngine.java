@@ -3,6 +3,8 @@ package com.ultraop.aurareplay.core;
 import com.comphenix.protocol.ProtocolManager;
 import com.ultraop.aurareplay.actor.ActorManager;
 import com.ultraop.aurareplay.actor.ActorPlaybackController;
+import com.ultraop.aurareplay.camera.CameraController;
+import com.ultraop.aurareplay.nms.NmsCameraBackend;
 import com.ultraop.aurareplay.nms.NmsVirtualActorBackend;
 import com.ultraop.aurareplay.recording.RecordingManager;
 import com.ultraop.aurareplay.recording.TickRecorder;
@@ -21,6 +23,7 @@ public final class AuraEngine {
     private final ActorPlaybackController actorPlaybackController;
     private final SceneManager sceneManager;
     private final SceneTimelineService sceneTimelineService;
+    private final CameraController cameraController;
     private BukkitTask playbackTask;
 
     public AuraEngine(JavaPlugin plugin, ProtocolManager protocolManager) {
@@ -32,6 +35,7 @@ public final class AuraEngine {
         this.actorPlaybackController = new ActorPlaybackController(new NmsVirtualActorBackend());
         this.sceneManager = new SceneManager(actorManager, actorPlaybackController);
         this.sceneTimelineService = new SceneTimelineService();
+        this.cameraController = new CameraController(new NmsCameraBackend());
     }
 
     public void start() {
@@ -40,6 +44,7 @@ public final class AuraEngine {
                 Bukkit.getOnlinePlayers().forEach(viewer -> {
                     sceneManager.tick(viewer);
                     actorPlaybackController.tickStandalone(viewer, sceneManager.activeActorIds(viewer));
+                    cameraController.tick(viewer);
                 }), 1L, 1L);
     }
 
@@ -48,8 +53,12 @@ public final class AuraEngine {
             playbackTask.cancel();
             playbackTask = null;
         }
-        Bukkit.getOnlinePlayers().forEach(actorPlaybackController::stopAll);
+        Bukkit.getOnlinePlayers().forEach(viewer -> {
+            actorPlaybackController.stopAll(viewer);
+            cameraController.stop(viewer);
+        });
         actorPlaybackController.clear();
+        cameraController.clear();
         sceneTimelineService.clear();
         tickRecorder.shutdown();
     }
@@ -62,4 +71,5 @@ public final class AuraEngine {
     public ActorPlaybackController actorPlaybackController() { return actorPlaybackController; }
     public SceneManager sceneManager() { return sceneManager; }
     public SceneTimelineService sceneTimelineService() { return sceneTimelineService; }
+    public CameraController cameraController() { return cameraController; }
 }
