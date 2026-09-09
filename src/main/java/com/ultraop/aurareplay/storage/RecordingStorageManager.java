@@ -19,7 +19,7 @@ import java.util.concurrent.Executor;
 
 /** Durable .arrec recording files plus a SQLite metadata index. */
 public final class RecordingStorageManager implements AutoCloseable {
-    private static final int FORMAT_VERSION = 2;
+    private static final int FORMAT_VERSION = 3;
     private final File databaseFile;
     private final Path recordingsDirectory;
     private final RecordingBinaryCodec codec;
@@ -44,17 +44,44 @@ public final class RecordingStorageManager implements AutoCloseable {
 
     public CompletableFuture<Integer> loadAllAsync(RecordingManager manager) {
         Objects.requireNonNull(manager, "manager");
-        return CompletableFuture.supplyAsync(() -> { int loaded = 0; for (RecordingMetadata m : list()) { try { manager.register(load(m)); loaded++; } catch (RuntimeException | IOException ignored) { } } return loaded; }, executor);
+        return CompletableFuture.supplyAsync(() -> {
+            int loaded = 0;
+            for (RecordingMetadata m : list()) {
+                try {
+                    manager.register(load(m));
+                    loaded++;
+                } catch (RuntimeException | IOException ignored) {
+                    // A single damaged recording must not prevent healthy recordings from loading.
+                }
+            }
+            return loaded;
+        }, executor);
     }
 
     public CompletableFuture<Recording> loadAsync(String name) {
         return CompletableFuture.supplyAsync(() -> { try { return load(name); } catch (IOException e) { throw failure("Could not load recording " + name, e); } }, executor);
     }
     public Recording load(String name) throws IOException { return load(findMetadata(name).orElseThrow(() -> new IOException("recording not found: " + name))); }
+
     private Recording load(RecordingMetadata metadata) throws IOException {
-        Path path = recordingsDirectory.resolve(metadata.fileName());
-        if (!Files.isRegularFile(path)) throw new IOException("recording file missing: " + path.getFileName());
-        return codec.decode(Files.readAllBytes(path));
+        if (metadata.formatVersion() != FORMAT_VERSION) {
+            throw new IOException("unsupported stored recording format version: " + metadata.formatVersion());
+        }
+        Path path = recordingsDirectory.resolve(metadata.fileName()).normalize();
+        if (!path.getParent().equals(recordingsDirectory) || !Files.isRegularFile(path)) {
+            throw new IOException("recording file missing: " + path.getFileName());
+        }
+        Recording recording = codec.decode(Files.readAllBytes(path));
+        if (!normalize(recording.name()).equals(metadata.name())) {
+            throw new IOException("recording metadata/name mismatch: " + metadata.name());
+        }
+        if (recording.durationTicks() != metadata.durationTicks()) {
+            throw new IOException("recording metadata/duration mismatch: " + metadata.name());
+        }
+        if (recording.frames().size() != metadata.frameCount()) {
+            throw new IOException("recording metadata/frame-count mismatch: " + metadata.name());
+        }
+        return recording;
     }
 
     public CompletableFuture<RecordingMetadata> saveAsync(Recording recording) { return CompletableFuture.supplyAsync(() -> save(recording), executor); }
