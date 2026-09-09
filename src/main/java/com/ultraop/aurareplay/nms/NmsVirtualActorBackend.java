@@ -1,7 +1,6 @@
 package com.ultraop.aurareplay.nms;
 
 import com.mojang.authlib.GameProfile;
-import com.mojang.authlib.minecraft.client.MinecraftClient;
 import com.ultraop.aurareplay.actor.ActorDefinition;
 import com.ultraop.aurareplay.actor.ActorTransform;
 import com.ultraop.aurareplay.actor.VirtualActorBackend;
@@ -12,23 +11,21 @@ import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerEntity;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.phys.Vec3;
 import org.bukkit.Bukkit;
 import org.bukkit.craftbukkit.CraftServer;
-import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.craftbukkit.CraftWorld;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
-import net.minecraft.server.level.ClientInformation;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -62,10 +59,10 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         ServerLevel level = ((CraftWorld) viewer.getWorld()).getHandle();
 
         UUID fakeUuid = UUID.nameUUIDFromBytes(
-                ("AuraReplay:" + viewer.getUniqueId() + ":" + actor.id()).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                ("AuraReplay:" + viewer.getUniqueId() + ":" + actor.id())
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)
         );
-        String profileName = profileName(actor.name());
-        GameProfile profile = new GameProfile(fakeUuid, profileName);
+        GameProfile profile = new GameProfile(fakeUuid, profileName(actor.name()));
         ServerPlayer npc = new ServerPlayer(server, level, profile, ClientInformation.createDefault());
         ActorTransform transform = actor.transform();
         npc.setPos(transform.x(), transform.y(), transform.z());
@@ -155,8 +152,8 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
 
     @Override
     public void updateEquipment(ActorDefinition actor, Player viewer) {
-        // Equipment is applied by the playback layer once the source snapshot is available.
-        // Keeping this method as a separate boundary prevents Bukkit/NMS state from leaking into the domain.
+        // Equipment synchronization is the next renderer layer; this method remains
+        // separate so the actor domain never depends on NMS equipment types.
     }
 
     private void sendEntityDataIfDirty(Player viewer, ServerPlayer npc) {
