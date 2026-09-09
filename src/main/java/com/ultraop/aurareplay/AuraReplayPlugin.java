@@ -4,6 +4,7 @@ import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.ProtocolManager;
 import com.ultraop.aurareplay.command.PersistentAuraReplayCommand;
 import com.ultraop.aurareplay.core.AuraEngine;
+import com.ultraop.aurareplay.listener.PlaybackLifecycleListener;
 import com.ultraop.aurareplay.storage.ActorStorage;
 import com.ultraop.aurareplay.storage.ProjectStorage;
 import com.ultraop.aurareplay.storage.RecordingStorageManager;
@@ -39,7 +40,7 @@ public final class AuraReplayPlugin extends JavaPlugin {
         engine.recordingManager().loadAllAsync().join(); actorStorage.loadInto(engine.actorManager(),engine.recordingManager()); projectStorage.loadInto(engine.sceneManager(),engine.cameraManager());
         engine.start(); persistenceTask=Bukkit.getScheduler().runTaskTimer(this,this::persistProjectAsync,100L,100L);
         PersistentAuraReplayCommand command=new PersistentAuraReplayCommand(engine); if(getCommand("aurareplay")!=null){getCommand("aurareplay").setExecutor(command);getCommand("aurareplay").setTabCompleter(command);} if(getCommand("arstudio")!=null)getCommand("arstudio").setExecutor(new StudioCommand(engine));
-        ActorSourceBrowser sourceBrowser=new ActorSourceBrowser(engine); getServer().getPluginManager().registerEvents(new StudioListener(engine.studioController(),sourceBrowser),this); getServer().getPluginManager().registerEvents(new SceneStudioListener(engine),this); getServer().getPluginManager().registerEvents(new ActorSourceBrowserListener(sourceBrowser,engine),this);
+        ActorSourceBrowser sourceBrowser=new ActorSourceBrowser(engine); getServer().getPluginManager().registerEvents(new StudioListener(engine.studioController(),sourceBrowser),this); getServer().getPluginManager().registerEvents(new SceneStudioListener(engine),this); getServer().getPluginManager().registerEvents(new ActorSourceBrowserListener(sourceBrowser,engine),this); getServer().getPluginManager().registerEvents(new PlaybackLifecycleListener(engine),this);
         getLogger().info("AuraReplay foundation enabled with persistent project, recording, and actor storage.");
     }
     private void persistProjectAsync(){if(projectStorage==null||actorStorage==null||engine==null)return;ProjectStorage.ProjectSnapshot p=projectStorage.capture(engine.sceneManager(),engine.cameraManager());List<ActorStorage.ActorSnapshot>a=actorStorage.captureAll(engine.actorManager());pendingPersistence=pendingPersistence.handle((ignored,error)->null).thenCompose(ignored->projectStorage.saveAsync(p)).thenCompose(ignored->actorStorage.saveAsync(a));}
