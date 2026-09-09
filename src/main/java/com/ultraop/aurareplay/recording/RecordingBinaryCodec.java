@@ -84,7 +84,7 @@ public final class RecordingBinaryCodec {
                 List<EntitySnapshot> entities = new ArrayList<>(entityCount);
 
                 for (int i = 0; i < entityCount; i++) {
-                    EntitySnapshot entity = readEntityDelta(in, keyframe ? null : previous);
+                    EntitySnapshot entity = readEntityDelta(in, keyframe, previous);
                     EntityKey key = EntityKey.of(entity);
                     current.put(key, entity);
                     entities.add(entity);
@@ -123,7 +123,7 @@ public final class RecordingBinaryCodec {
         EntityType type = EntityType.valueOf(readString(in));
         EntityKey key = new EntityKey(uuid, entityId);
         EntitySnapshot base = previous == null ? null : previous.get(key);
-        if (base == null) keyframe = true;
+        if (keyframe || base == null) base = null;
 
         int mask = in.readUnsignedByte();
         double x = base == null ? 0 : base.x(), y = base == null ? 0 : base.y(), z = base == null ? 0 : base.z();
