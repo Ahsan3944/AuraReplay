@@ -18,6 +18,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -30,8 +31,10 @@ public final class AuraReplayPlugin extends JavaPlugin {
         storageExecutor=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"AuraReplay-Storage");t.setDaemon(true);return t;});
         projectStorage=new ProjectStorage(this,storageExecutor); recordingStorage=new RecordingStorageManager(this,storageExecutor); actorStorage=new ActorStorage(this,storageExecutor);
         engine.recordingManager().attachStorage(recordingStorage);
-        engine.actorPlaybackController().setSourceFactory(actor->{try{return recordingStorage.createPlaybackSource(actor.recording().name());}catch(Exception ignored){return null;}});
+        engine.actorPlaybackController().setSourceFactory(null);
         engine.actorPlaybackController().setAsyncSourceFactory(actor->engine.recordingManager().createPlaybackSourceAsync(actor.recording().name()),storageExecutor);
+        Executor mainThreadExecutor=task->Bukkit.getScheduler().runTask(this,task);
+        engine.actorPlaybackController().setMainThreadExecutor(mainThreadExecutor);
 
         engine.recordingManager().loadAllAsync().join(); actorStorage.loadInto(engine.actorManager(),engine.recordingManager()); projectStorage.loadInto(engine.sceneManager(),engine.cameraManager());
         engine.start(); persistenceTask=Bukkit.getScheduler().runTaskTimer(this,this::persistProjectAsync,100L,100L);
