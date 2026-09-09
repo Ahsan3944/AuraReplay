@@ -42,12 +42,23 @@ public final class TickRecorder {
         ).getTaskId();
     }
 
-    public void stop() {
+    public Recording stop(String name) {
+        if (!recording) return null;
+
         recording = false;
         if (taskId != -1) {
             Bukkit.getScheduler().cancelTask(taskId);
             taskId = -1;
         }
+
+        // The async writer normally drains within the next scheduling slice.
+        // The returned object is an immutable snapshot of all frames committed so far.
+        List<TickSnapshot> frames = buffer.snapshot();
+        return new Recording(name, frames.isEmpty() ? 0 : frames.get(frames.size() - 1).tick() + 1, frames);
+    }
+
+    public void stop() {
+        stop("untitled");
     }
 
     /** Must execute on the Paper main thread. */
@@ -61,7 +72,7 @@ public final class TickRecorder {
             }
         }
 
-        buffer.append(new TickSnapshot(tick++, List.copyOf(snapshots)));
+        buffer.append(new TickSnapshot(tick++, List.copyOf(snapshots), List.of()));
     }
 
     private EntitySnapshot snapshot(Entity entity) {
