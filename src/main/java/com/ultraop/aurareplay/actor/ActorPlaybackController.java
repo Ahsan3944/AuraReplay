@@ -23,9 +23,6 @@ public final class ActorPlaybackController {
                 viewer.getUniqueId(), ignored -> new HashMap<>()
         );
         ActorPlayback playback = new ActorPlayback(actor);
-        if (actor.reverse() && actor.recording().durationTicks() > 0) {
-            playback.cursor().setPosition(actor.recording().durationTicks() - 1.0d);
-        }
         viewerSessions.put(actor.id(), playback);
 
         if (actor.visible()) {
@@ -63,18 +60,7 @@ public final class ActorPlaybackController {
                 continue;
             }
 
-            if (!actor.frozen()) {
-                long delay = actor.startDelayTicks();
-                if (playback.cursor().position() >= 0.0d && delay <= 0) {
-                    playback.cursor().advance(
-                            1.0d,
-                            actor.playbackSpeed(),
-                            actor.reverse(),
-                            actor.recording().durationTicks(),
-                            actor.loop()
-                    );
-                }
-            }
+            playback.tick();
             render(playback, viewer);
         }
     }
