@@ -2,7 +2,7 @@ package com.ultraop.aurareplay;
 
 import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.ProtocolManager;
-import com.ultraop.aurareplay.command.AuraReplayCommand;
+import com.ultraop.aurareplay.command.PersistentAuraReplayCommand;
 import com.ultraop.aurareplay.core.AuraEngine;
 import com.ultraop.aurareplay.storage.ProjectStorage;
 import com.ultraop.aurareplay.storage.RecordingStorageManager;
@@ -41,7 +41,7 @@ public final class AuraReplayPlugin extends JavaPlugin {
         engine.start();
         persistenceTask = Bukkit.getScheduler().runTaskTimer(this, this::persistProjectAsync, 100L, 100L);
 
-        AuraReplayCommand command = new AuraReplayCommand(engine);
+        PersistentAuraReplayCommand command = new PersistentAuraReplayCommand(engine);
         if (getCommand("aurareplay") != null) { getCommand("aurareplay").setExecutor(command); getCommand("aurareplay").setTabCompleter(command); }
         if (getCommand("arstudio") != null) getCommand("arstudio").setExecutor(new StudioCommand(engine.studioController()));
         getServer().getPluginManager().registerEvents(new StudioListener(engine.studioController()), this);
@@ -61,9 +61,7 @@ public final class AuraReplayPlugin extends JavaPlugin {
             try {
                 pendingPersistence.join();
                 projectStorage.save(projectStorage.capture(engine.sceneManager(), engine.cameraManager()));
-            } finally {
-                projectStorage.close();
-            }
+            } finally { projectStorage.close(); }
         }
         if (recordingStorage != null) recordingStorage.close();
         if (engine != null) engine.shutdown();
