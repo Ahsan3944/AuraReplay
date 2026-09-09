@@ -1,6 +1,6 @@
 plugins {
     java
-    id("io.papermc.paperweight.userdev") version "2.0.0-beta.19"
+    id("io.papermc.paperweight.userdev") version "2.0.0-beta.23"
 }
 
 group = "com.ultraop"
@@ -11,12 +11,11 @@ description = "Next-generation server-side Minecraft motion capture and performa
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
-    maven("https://repo.dmulloy2.net/repository/public/")
 }
 
 dependencies {
     paperweight.paperDevBundle("1.21.11-R0.1-SNAPSHOT")
-    compileOnly("com.comphenix.protocol:ProtocolLib:5.4.0-SNAPSHOT")
+    compileOnly("net.dmulloy2:ProtocolLib:5.4.0")
 }
 
 java {
@@ -30,8 +29,6 @@ tasks.withType<JavaCompile>().configureEach {
 
 paperweight.reobfArtifactConfiguration = io.papermc.paperweight.userdev.ReobfArtifactConfiguration.REOBF_PRODUCTION
 
-val pluginName = "AuraReplay"
-
 tasks.jar {
-    archiveBaseName.set(pluginName)
+    archiveBaseName.set("AuraReplay")
 }
