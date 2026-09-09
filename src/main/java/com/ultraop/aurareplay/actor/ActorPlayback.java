@@ -8,15 +8,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
+/** Deterministic actor playback with sub-tick sampling and source-relative timing. */
 public final class ActorPlayback {
     private final ActorDefinition actor;
     private final ActorPlaybackSource source;
     private final PlaybackCursor cursor = new PlaybackCursor();
     private long elapsedTicks;
 
-    public ActorPlayback(ActorDefinition actor) {
-        this(actor, new MemoryActorPlaybackSource(actor.recording().frames()));
-    }
+    public ActorPlayback(ActorDefinition actor) { this(actor, new MemoryActorPlaybackSource(actor.recording().frames())); }
 
     public ActorPlayback(ActorDefinition actor, ActorPlaybackSource source) {
         this.actor = Objects.requireNonNull(actor);
@@ -32,45 +31,37 @@ public final class ActorPlayback {
     public void tick() {
         elapsedTicks++;
         if (actor.frozen() || elapsedTicks <= actor.startDelayTicks()) return;
-        cursor.advance(1.0d, actor.playbackSpeed(), actor.reverse(), actor.recording().durationTicks(), actor.loop());
+        cursor.advance(1.0d, actor.playbackSpeed(), actor.reverse(), playbackDuration(), actor.loop());
     }
 
+    /** Maps scene time to actor-local source time, preserving fractional ticks. */
     public void setScenePosition(double sceneTick) {
         if (!Double.isFinite(sceneTick)) return;
-        double local = sceneTick - actor.startDelayTicks();
-        if (local < 0.0d) local = 0.0d;
-        double duration = Math.max(0.0d, actor.recording().durationTicks());
+        double local = Math.max(0.0d, sceneTick - actor.startDelayTicks());
         double position = local * actor.playbackSpeed();
-        if (actor.reverse() && duration > 0.0d) position = duration - 1.0d - position;
-        if (actor.loop() && duration > 0.0d) {
-            position %= duration;
-            if (position < 0.0d) position += duration;
-        }
-        cursor.setPosition(position);
+        double duration = playbackDuration();
+        if (actor.reverse() && duration > 0.0d) position = Math.max(0.0d, duration - 1.0d - position);
+        cursor.seek(position);
+        if (actor.loop() && duration > 0.0d) cursor.advance(0.0d, 1.0d, false, (long) duration, true);
         elapsedTicks = Math.max(elapsedTicks, (long) Math.floor(Math.max(0.0d, sceneTick)));
     }
 
     public void reset() {
         elapsedTicks = 0L;
-        if (actor.reverse() && actor.recording().durationTicks() > 0) {
-            cursor.setPosition(actor.recording().durationTicks() - 1.0d);
-        } else cursor.reset();
+        if (actor.reverse() && playbackDuration() > 0.0d) cursor.seek(playbackDuration() - 1.0d);
+        else cursor.reset();
     }
 
-    public EntitySnapshot sample() {
-        ActorSample sample = sampleState();
-        return sample == null ? null : sample.source();
-    }
-
+    public EntitySnapshot sample() { ActorSample sample = sampleState(); return sample == null ? null : sample.source(); }
     public ActorSample sampleState() { return sampleAt(cursor.position()); }
 
     public ActorSample sampleAt(double position) {
         int count = source.frameCount();
-        if (count <= 0) return null;
-        position = Math.max(0.0d, Math.min(position, count - 1.0d));
-        int lowerIndex = (int) Math.floor(position);
+        if (count <= 0 || !Double.isFinite(position)) return null;
+        double bounded = Math.max(0.0d, Math.min(position, count - 1.0d));
+        int lowerIndex = (int) Math.floor(bounded);
         int upperIndex = Math.min(count - 1, lowerIndex + 1);
-        double alpha = position - lowerIndex;
+        double alpha = bounded - lowerIndex;
         TickSnapshot lowerFrame = frame(lowerIndex);
         TickSnapshot upperFrame = frame(upperIndex);
         if (lowerFrame == null || upperFrame == null) return null;
@@ -87,7 +78,11 @@ public final class ActorPlayback {
                 normalizeDegrees(sampled.yaw() + base.yaw()), normalizeDegrees(sampled.pitch() + base.pitch()),
                 base.roll(), base.scale()
         );
-        return new ActorSample(sampled, transformed, position);
+        return new ActorSample(sampled, transformed, bounded);
+    }
+
+    private double playbackDuration() {
+        return Math.max(0.0d, source.frameCount());
     }
 
     private TickSnapshot frame(int index) {
