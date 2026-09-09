@@ -6,6 +6,8 @@ import com.ultraop.aurareplay.command.PersistentAuraReplayCommand;
 import com.ultraop.aurareplay.core.AuraEngine;
 import com.ultraop.aurareplay.storage.ProjectStorage;
 import com.ultraop.aurareplay.storage.RecordingStorageManager;
+import com.ultraop.aurareplay.ui.ActorSourceBrowser;
+import com.ultraop.aurareplay.ui.ActorSourceBrowserListener;
 import com.ultraop.aurareplay.ui.SceneStudioListener;
 import com.ultraop.aurareplay.ui.StudioCommand;
 import com.ultraop.aurareplay.ui.StudioListener;
@@ -43,9 +45,11 @@ public final class AuraReplayPlugin extends JavaPlugin {
 
         PersistentAuraReplayCommand command = new PersistentAuraReplayCommand(engine);
         if (getCommand("aurareplay") != null) { getCommand("aurareplay").setExecutor(command); getCommand("aurareplay").setTabCompleter(command); }
-        if (getCommand("arstudio") != null) getCommand("arstudio").setExecutor(new StudioCommand(engine.studioController()));
+        if (getCommand("arstudio") != null) getCommand("arstudio").setExecutor(new StudioCommand(engine));
         getServer().getPluginManager().registerEvents(new StudioListener(engine.studioController()), this);
         getServer().getPluginManager().registerEvents(new SceneStudioListener(engine), this);
+        ActorSourceBrowser sourceBrowser = new ActorSourceBrowser(engine);
+        getServer().getPluginManager().registerEvents(new ActorSourceBrowserListener(sourceBrowser, engine), this);
         getLogger().info("AuraReplay foundation enabled with persistent project and recording storage.");
     }
 
