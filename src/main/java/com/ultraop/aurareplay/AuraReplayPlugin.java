@@ -13,8 +13,8 @@ import com.ultraop.aurareplay.ui.SceneStudioListener;
 import com.ultraop.aurareplay.ui.StudioCommand;
 import com.ultraop.aurareplay.ui.StudioListener;
 import org.bukkit.Bukkit;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -42,6 +42,10 @@ public final class AuraReplayPlugin extends JavaPlugin {
         recordingStorage = new RecordingStorageManager(this, storageExecutor);
         actorStorage = new ActorStorage(this, storageExecutor);
         engine.recordingManager().attachStorage(recordingStorage);
+        engine.actorPlaybackController().setSourceFactory(actor -> {
+            try { return recordingStorage.createPlaybackSource(actor.recording().name()); }
+            catch (Exception ignored) { return null; }
+        });
 
         // Immutable recordings must exist before persisted actor instances are restored.
         engine.recordingManager().loadAllAsync().join();
