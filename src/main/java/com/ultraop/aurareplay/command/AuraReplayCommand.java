@@ -183,7 +183,7 @@ public final class AuraReplayCommand implements CommandExecutor, TabCompleter {
             return;
         }
         engine.actorManager().all().forEach(actor ->
-                sender.sendMessage(ChatColor.YELLOW + actor.id() + ChatColor.GRAY + " — " + actor.name()));
+                sender.sendMessage(ChatColor.YELLOW + actor.id().toString() + ChatColor.GRAY + " — " + actor.name()));
     }
 
     private void sendUsage(CommandSender sender) {
