@@ -182,6 +182,7 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
     private void applyFlags(ServerPlayer npc, int flags) {
         Player bukkitPlayer = npc.getBukkitEntity();
         bukkitPlayer.setSneaking(hasFlag(flags, EntityFlags.SNEAKING));
+        bukkitPlayer.setSprinting(hasFlag(flags, EntityFlags.SPRINTING));
         bukkitPlayer.setSwimming(hasFlag(flags, EntityFlags.SWIMMING));
         bukkitPlayer.setGliding(hasFlag(flags, EntityFlags.GLIDING));
         bukkitPlayer.setInvisible(hasFlag(flags, EntityFlags.INVISIBLE));
