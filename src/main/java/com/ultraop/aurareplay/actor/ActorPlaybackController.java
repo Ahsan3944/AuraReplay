@@ -14,6 +14,8 @@ import java.util.function.Function;
 
 /** Main-thread playback coordinator. Disk-backed sources are loaded and warmed asynchronously. */
 public final class ActorPlaybackController {
+    private static final int PREFETCH_RADIUS = 16;
+    private static final int PREFETCH_TRIGGER = 8;
     private final VirtualActorBackend backend;
     private final Map<UUID, Map<ActorId, ActorPlayback>> sessions = new ConcurrentHashMap<>();
     private Function<ActorDefinition, ActorPlaybackSource> sourceFactory = actor -> null;
@@ -36,10 +38,14 @@ public final class ActorPlaybackController {
         if (asyncSourceFactory != null) {
             asyncSourceFactory.apply(actor).whenComplete((ready, error) -> {
                 if (error != null || ready == null) return;
-                mainThreadExecutor.execute(() -> {
-                    if (ready instanceof IndexedActorPlaybackSource indexed && prefetchExecutor != null) indexed.prefetchAsync(initialFrame(actor, indexed), IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS, prefetchExecutor);
+                int initial = initialFrame(actor, ready);
+                CompletableFuture<Void> warm = ready instanceof IndexedActorPlaybackSource indexed && prefetchExecutor != null
+                        ? indexed.prefetchAsync(initial, PREFETCH_RADIUS, prefetchExecutor)
+                        : CompletableFuture.completedFuture(null);
+                warm.whenComplete((ignored, warmError) -> mainThreadExecutor.execute(() -> {
+                    if (warmError != null) return;
                     replaceSource(viewer.getUniqueId(), actor.id(), ready);
-                });
+                }));
             });
         }
     }
@@ -71,10 +77,7 @@ public final class ActorPlaybackController {
             Player viewer = Bukkit.getPlayer(entry.getKey());
             if (viewer == null) continue;
             for (ActorPlayback playback : new HashSet<>(entry.getValue().values())) {
-                if (normalizeRecordingName(playback.actor().recording().name()).equals(normalized)) {
-                    stop(viewer, playback.actor().id());
-                    stopped++;
-                }
+                if (normalizeRecordingName(playback.actor().recording().name()).equals(normalized)) { stop(viewer, playback.actor().id()); stopped++; }
             }
         }
         return stopped;
@@ -87,10 +90,7 @@ public final class ActorPlaybackController {
         for (Map.Entry<UUID, Map<ActorId, ActorPlayback>> entry : new HashSet<>(sessions.entrySet())) {
             Player viewer = Bukkit.getPlayer(entry.getKey());
             if (viewer == null) continue;
-            if (entry.getValue().containsKey(actorId)) {
-                stop(viewer, actorId);
-                stopped++;
-            }
+            if (entry.getValue().containsKey(actorId)) { stop(viewer, actorId); stopped++; }
         }
         return stopped;
     }
@@ -99,8 +99,14 @@ public final class ActorPlaybackController {
     public void clear(){for(Map<ActorId,ActorPlayback> viewerSessions:sessions.values())for(ActorPlayback playback:viewerSessions.values())closeSource(playback.source());sessions.clear();}
     public int sessionCount(){return sessions.values().stream().mapToInt(Map::size).sum();}
 
-    private void prefetch(ActorPlayback playback){if(!(playback.source() instanceof IndexedActorPlaybackSource indexed)||prefetchExecutor==null||indexed.frameCount()==0)return;int center=(int)Math.floor(Math.max(0.0d,playback.cursor().position()));if(center%IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS!=0)return;indexed.prefetchAsync(center,IndexedActorPlaybackSource.DEFAULT_PREFETCH_RADIUS,prefetchExecutor);}
-    private static int initialFrame(ActorDefinition actor,IndexedActorPlaybackSource source){return actor.reverse()?Math.max(0,source.frameCount()-1):0;}
+    private void prefetch(ActorPlayback playback){
+        if(!(playback.source() instanceof IndexedActorPlaybackSource indexed)||prefetchExecutor==null||indexed.frameCount()==0)return;
+        int center=(int)Math.floor(Math.max(0.0d,playback.cursor().position()));
+        int distanceToEnd=indexed.frameCount()-1-center;
+        if(center<=PREFETCH_TRIGGER || distanceToEnd<=PREFETCH_TRIGGER || center%PREFETCH_TRIGGER==0)
+            indexed.prefetchAsync(center,PREFETCH_RADIUS,prefetchExecutor);
+    }
+    private static int initialFrame(ActorDefinition actor,ActorPlaybackSource source){return actor.reverse()?Math.max(0,source.frameCount()-1):0;}
     private static void closeSource(ActorPlaybackSource source){if(source instanceof IndexedActorPlaybackSource indexed)indexed.clearCache();}
     private static String normalizeRecordingName(String name){return name == null ? "" : name.trim().toLowerCase(java.util.Locale.ROOT);}
     private void render(ActorPlayback playback,Player viewer){ActorSample sample=playback.sampleState();if(sample==null||!sample.exists())return;backend.update(playback.actor(),viewer,sample);}
