@@ -33,13 +33,7 @@ public final class TickRecorder {
         recording = true;
         tick = 0;
         buffer.start();
-
-        taskId = Bukkit.getScheduler().runTaskTimer(
-                plugin,
-                this::captureTick,
-                1L,
-                1L
-        ).getTaskId();
+        taskId = Bukkit.getScheduler().runTaskTimer(plugin, this::captureTick, 1L, 1L).getTaskId();
     }
 
     public Recording stop(String name) {
@@ -51,10 +45,9 @@ public final class TickRecorder {
             taskId = -1;
         }
 
-        // The async writer normally drains within the next scheduling slice.
-        // The returned object is an immutable snapshot of all frames committed so far.
-        List<TickSnapshot> frames = buffer.snapshot();
-        return new Recording(name, frames.isEmpty() ? 0 : frames.get(frames.size() - 1).tick() + 1, frames);
+        List<TickSnapshot> frames = buffer.stopAndSnapshot();
+        long duration = frames.isEmpty() ? 0 : frames.get(frames.size() - 1).tick() + 1;
+        return new Recording(name, duration, frames);
     }
 
     public void stop() {
@@ -67,11 +60,8 @@ public final class TickRecorder {
 
         var snapshots = new ArrayList<EntitySnapshot>(tracked.size());
         for (Entity entity : tracked.values()) {
-            if (entity.isValid()) {
-                snapshots.add(snapshot(entity));
-            }
+            if (entity.isValid()) snapshots.add(snapshot(entity));
         }
-
         buffer.append(new TickSnapshot(tick++, List.copyOf(snapshots), List.of()));
     }
 
@@ -90,15 +80,11 @@ public final class TickRecorder {
         if (entity.getFireTicks() > 0) flags |= EntityFlags.ON_FIRE;
 
         return new EntitySnapshot(
-                entity.getEntityId(),
-                entity.getUniqueId(),
-                entity.getType(),
+                entity.getEntityId(), entity.getUniqueId(), entity.getType(),
                 location.getX(), location.getY(), location.getZ(),
                 location.getYaw(), location.getPitch(),
                 velocity.getX(), velocity.getY(), velocity.getZ(),
-                flags,
-                EquipmentSnapshot.capture(entity),
-                true
+                flags, EquipmentSnapshot.capture(entity), true
         );
     }
 
