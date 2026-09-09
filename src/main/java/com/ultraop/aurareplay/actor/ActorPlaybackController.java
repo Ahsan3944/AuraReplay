@@ -80,6 +80,21 @@ public final class ActorPlaybackController {
         return stopped;
     }
 
+    /** Stops every active viewer session for one actor instance. Must run on the server thread. */
+    public int stopUsingActor(ActorId actorId) {
+        if (actorId == null) return 0;
+        int stopped = 0;
+        for (Map.Entry<UUID, Map<ActorId, ActorPlayback>> entry : new HashSet<>(sessions.entrySet())) {
+            Player viewer = Bukkit.getPlayer(entry.getKey());
+            if (viewer == null) continue;
+            if (entry.getValue().containsKey(actorId)) {
+                stop(viewer, actorId);
+                stopped++;
+            }
+        }
+        return stopped;
+    }
+
     public void tick(Player viewer){tickStandalone(viewer,Set.of());}
     public void clear(){for(Map<ActorId,ActorPlayback> viewerSessions:sessions.values())for(ActorPlayback playback:viewerSessions.values())closeSource(playback.source());sessions.clear();}
     public int sessionCount(){return sessions.values().stream().mapToInt(Map::size).sum();}
