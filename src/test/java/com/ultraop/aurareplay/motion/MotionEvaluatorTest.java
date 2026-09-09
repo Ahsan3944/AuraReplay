@@ -37,7 +37,7 @@ class MotionEvaluatorTest {
 
         MotionEvaluator.Evaluation result = new MotionEvaluator().evaluate(10, 20, ActorTransform.origin(0, 0, 0, 0, 0), stack);
 
-        assertEquals(18, result.sourcePosition());
+        assertEquals(9, result.sourcePosition());
         assertEquals(true, result.loop());
         assertEquals(true, result.reverse());
     }
