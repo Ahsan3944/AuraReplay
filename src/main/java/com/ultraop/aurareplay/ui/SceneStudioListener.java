@@ -10,6 +10,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
@@ -32,11 +33,18 @@ public final class SceneStudioListener implements Listener {
 
     public SceneStudioListener(AuraEngine engine) { this.engine = engine; }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (event.getClickedInventory() != event.getView().getTopInventory()) return;
         String title = event.getView().getTitle();
+        if (title.equals(ChatColor.DARK_AQUA + "AuraReplay Studio")) {
+            if (event.getRawSlot() == 20) {
+                event.setCancelled(true);
+                renderProject(player);
+            }
+            return;
+        }
         if (!title.equals(PROJECT) && !title.startsWith(SCENE_PREFIX)) return;
         event.setCancelled(true);
         if (title.equals(PROJECT)) projectClick(player, event.getRawSlot());
