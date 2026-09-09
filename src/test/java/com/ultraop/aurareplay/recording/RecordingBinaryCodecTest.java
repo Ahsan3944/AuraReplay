@@ -37,7 +37,7 @@ class RecordingBinaryCodecTest {
 
         assertEquals(original.name(), decoded.name());
         assertEquals(original.durationTicks(), decoded.durationTicks());
-        assertEquals(1, decoded.frames().size());
+        assertEquals(original.frames(), decoded.frames());
         assertEquals(entity, decoded.frames().getFirst().entities().getFirst());
         assertEquals(frame.actions(), decoded.frames().getFirst().actions());
     }
@@ -60,8 +60,12 @@ class RecordingBinaryCodecTest {
 
         Recording decoded = roundTrip(original);
 
-        assertEquals(original, decoded);
-        assertEquals(22, decoded.frames().size());
+        assertEquals(original.name(), decoded.name());
+        assertEquals(original.durationTicks(), decoded.durationTicks());
+        assertEquals(original.frames().size(), decoded.frames().size());
+        for (int i = 0; i < original.frames().size(); i++) {
+            assertEquals(original.frames().get(i), decoded.frames().get(i), "frame " + i);
+        }
         assertEquals(21.0, decoded.frames().get(21).entities().getFirst().x());
         assertEquals(111.0f, decoded.frames().get(21).entities().getFirst().yaw());
         assertEquals("F20", ((MarkerAction) decoded.frames().get(20).actions().getFirst()).name());
@@ -79,7 +83,9 @@ class RecordingBinaryCodecTest {
 
         Recording decoded = roundTrip(original);
 
-        assertEquals(original, decoded);
+        assertEquals(original.name(), decoded.name());
+        assertEquals(original.durationTicks(), decoded.durationTicks());
+        assertEquals(original.frames(), decoded.frames());
         assertTrue(decoded.frames().get(0).entities().isEmpty());
         assertEquals(entity, decoded.frames().get(1).entities().getFirst());
         assertTrue(decoded.frames().get(2).entities().isEmpty());
