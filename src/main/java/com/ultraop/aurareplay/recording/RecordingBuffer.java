@@ -7,10 +7,16 @@ import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
+/**
+ * Thread boundary between the synchronous capture path and asynchronous processing.
+ * The current phase keeps an in-memory immutable frame index; persistence is added behind this API.
+ */
 public final class RecordingBuffer {
 
     private final ConcurrentLinkedQueue<TickSnapshot> queue = new ConcurrentLinkedQueue<>();
+    private final List<TickSnapshot> completed = new ArrayList<>();
     private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "AuraReplay-RecordingWriter");
         thread.setDaemon(true);
@@ -33,23 +39,38 @@ public final class RecordingBuffer {
 
     private void drainLoop() {
         while (running || !queue.isEmpty()) {
-            List<TickSnapshot> batch = new ArrayList<>(64);
-            for (int i = 0; i < 64; i++) {
-                TickSnapshot snapshot = queue.poll();
-                if (snapshot == null) break;
-                batch.add(snapshot);
-            }
-            if (batch.isEmpty()) {
+            TickSnapshot snapshot = queue.poll();
+            if (snapshot == null) {
                 Thread.onSpinWait();
                 continue;
             }
-            // Phase 1 keeps snapshots in memory. Persistence/compression is added
-            // behind this boundary so the recording hot path stays unchanged.
+            synchronized (completed) {
+                completed.add(snapshot);
+            }
         }
+    }
+
+    public List<TickSnapshot> snapshot() {
+        synchronized (completed) {
+            return List.copyOf(completed);
+        }
+    }
+
+    public void clear() {
+        synchronized (completed) {
+            completed.clear();
+        }
+        queue.clear();
     }
 
     public void shutdown() {
         running = false;
         writer.shutdown();
+        try {
+            writer.awaitTermination(2, TimeUnit.SECONDS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            writer.shutdownNow();
+        }
     }
 }
