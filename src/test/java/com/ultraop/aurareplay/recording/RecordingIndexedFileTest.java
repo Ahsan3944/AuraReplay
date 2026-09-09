@@ -49,7 +49,7 @@ class RecordingIndexedFileTest {
         try {
             RecordingIndexedFile.write(path, original);
             assertEquals(original.frames().get(10), RecordingIndexedFile.readTick(path, 10));
-            assertEquals(original.frames().get(10), RecordingIndexedFile.readTick(path, 15));
+            assertEquals(original.frames().get(15), RecordingIndexedFile.readTick(path, 15));
             assertEquals(original.frames().get(20), RecordingIndexedFile.readTick(path, 20));
             assertEquals(original.frames().get(44), RecordingIndexedFile.readTick(path, 999));
             assertEquals(original.frames().get(0), RecordingIndexedFile.readTick(path, -999));
