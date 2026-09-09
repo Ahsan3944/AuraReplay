@@ -1,0 +1,22 @@
+name: AuraReplay
+version: '${version}'
+main: com.ultraop.aurareplay.AuraReplayPlugin
+api-version: '1.21'
+authors: [Ahsan3944]
+description: Next-generation server-side Minecraft Motion Capture & Performance Editing Studio.
+website: https://github.com/Ahsan3944/AuraReplay
+depend: [ProtocolLib]
+commands:
+  aurareplay:
+    description: AuraReplay Motion Capture Studio
+    aliases: [ar, aura]
+    usage: /aurareplay <record|scene|actor|studio|play|stop>
+permissions:
+  aurareplay.use:
+    default: op
+  aurareplay.record:
+    default: op
+  aurareplay.edit:
+    default: op
+  aurareplay.admin:
+    default: op
