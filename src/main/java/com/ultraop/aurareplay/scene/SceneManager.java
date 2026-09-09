@@ -5,6 +5,7 @@ import com.ultraop.aurareplay.actor.ActorId;
 import com.ultraop.aurareplay.actor.ActorManager;
 import com.ultraop.aurareplay.actor.ActorPlaybackController;
 import com.ultraop.aurareplay.camera.CameraController;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.Collection;
@@ -44,9 +45,20 @@ public final class SceneManager {
 
     public boolean delete(String name) {
         String key = normalize(name);
-        Scene scene = scenes.remove(key);
+        Scene scene = scenes.get(key);
         if (scene == null) return false;
-        activeSessions.entrySet().removeIf(entry -> entry.getValue().scene() == scene);
+
+        activeSessions.entrySet().stream()
+                .filter(entry -> entry.getValue().scene() == scene)
+                .map(Map.Entry::getKey)
+                .toList()
+                .forEach(uuid -> {
+                    Player viewer = Bukkit.getPlayer(uuid);
+                    if (viewer != null) stop(viewer);
+                    else activeSessions.remove(uuid);
+                });
+
+        scenes.remove(key, scene);
         sceneCameras.unbind(scene);
         return true;
     }
@@ -188,6 +200,13 @@ public final class SceneManager {
     }
 
     public void stopAll(Player viewer) { stop(viewer); }
-    public void clear() { activeSessions.values().forEach(session -> {}); activeSessions.clear(); scenes.clear(); sceneCameras.clear(); }
+
+    public void clear() {
+        for (Player viewer : Bukkit.getOnlinePlayers()) stop(viewer);
+        activeSessions.clear();
+        scenes.clear();
+        sceneCameras.clear();
+    }
+
     private static String normalize(String name) { return name.trim().toLowerCase(java.util.Locale.ROOT); }
 }
