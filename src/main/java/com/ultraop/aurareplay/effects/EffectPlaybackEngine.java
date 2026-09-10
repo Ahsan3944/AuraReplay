@@ -21,34 +21,58 @@ public final class EffectPlaybackEngine {
         if (!cursor.initialized()) { cursor.reset(currentTick); return 0; }
         double from = cursor.previousTick();
         if (Math.abs(currentTick - from) < 1.0e-9d) return 0;
-        List<EffectCue> cues = new ArrayList<>();
-        if (reverse) {
-            for (EffectCue cue : scene.effects().all()) if (cursor.crossedReverse(cue.tick(), from, currentTick)) cues.add(cue);
-            cues.sort(Comparator.comparingLong(EffectCue::tick).reversed());
-        } else {
-            for (EffectCue cue : scene.effects().all()) if (cursor.crossedForward(cue.tick(), from, currentTick)) cues.add(cue);
-            cues.sort(Comparator.comparingLong(EffectCue::tick));
-        }
+        List<EffectCue> cues = crossed(scene, cursor, from, currentTick, reverse);
         for (EffectCue cue : cues) EffectCuePlayer.play(viewer, cue);
         cursor.commit(currentTick);
         return cues.size();
     }
 
-    /** Handles a loop seam by traversing the two visible segments without duplicating the seam. */
+    /**
+     * Handles a loop seam as two half-open traversal segments. The boundary itself is
+     * emitted exactly once, and the wrapped segment starts at the loop origin.
+     */
     public int advanceLoop(Player viewer, Scene scene, EffectPlaybackCursor cursor, double currentTick, double boundary, boolean reverse) {
         Objects.requireNonNull(viewer, "viewer"); Objects.requireNonNull(scene, "scene"); Objects.requireNonNull(cursor, "cursor");
-        double from = cursor.previousTick();
         if (!Double.isFinite(currentTick) || !Double.isFinite(boundary)) throw new IllegalArgumentException("ticks must be finite");
+        if (!cursor.initialized()) { cursor.reset(currentTick); return 0; }
+        double from = cursor.previousTick();
         int fired = 0;
         if (reverse) {
-            for (EffectCue cue : scene.effects().all()) if (cursor.crossedReverse(cue.tick(), from, boundary)) { EffectCuePlayer.play(viewer, cue); fired++; }
-            cursor.nextLoop(); cursor.commit(currentTick);
-            for (EffectCue cue : scene.effects().all()) if (cue.tick() >= currentTick && cue.tick() < boundary) { EffectCuePlayer.play(viewer, cue); fired++; }
+            List<EffectCue> first = crossed(scene, cursor, from, boundary, true);
+            for (EffectCue cue : first) { EffectCuePlayer.play(viewer, cue); fired++; }
+            cursor.nextLoop();
+            cursor.commit(boundary);
+            List<EffectCue> second = new ArrayList<>();
+            for (EffectCue cue : scene.effects().all()) {
+                if (cue.tick() >= currentTick && cue.tick() < boundary) second.add(cue);
+            }
+            second.sort(Comparator.comparingLong(EffectCue::tick).reversed());
+            for (EffectCue cue : second) { EffectCuePlayer.play(viewer, cue); fired++; }
         } else {
-            for (EffectCue cue : scene.effects().all()) if (cursor.crossedForward(cue.tick(), from, boundary)) { EffectCuePlayer.play(viewer, cue); fired++; }
-            cursor.nextLoop(); cursor.commit(currentTick);
-            for (EffectCue cue : scene.effects().all()) if (cue.tick() > boundary && cue.tick() <= currentTick) { EffectCuePlayer.play(viewer, cue); fired++; }
+            List<EffectCue> first = crossed(scene, cursor, from, boundary, false);
+            for (EffectCue cue : first) { EffectCuePlayer.play(viewer, cue); fired++; }
+            cursor.nextLoop();
+            cursor.commit(boundary);
+            List<EffectCue> second = new ArrayList<>();
+            for (EffectCue cue : scene.effects().all()) {
+                if (cue.tick() > boundary && cue.tick() <= currentTick) second.add(cue);
+            }
+            second.sort(Comparator.comparingLong(EffectCue::tick));
+            for (EffectCue cue : second) { EffectCuePlayer.play(viewer, cue); fired++; }
         }
+        cursor.commit(currentTick);
         return fired;
+    }
+
+    private List<EffectCue> crossed(Scene scene, EffectPlaybackCursor cursor, double from, double to, boolean reverse) {
+        List<EffectCue> cues = new ArrayList<>();
+        if (reverse) {
+            for (EffectCue cue : scene.effects().all()) if (cursor.crossedReverse(cue.tick(), from, to)) cues.add(cue);
+            cues.sort(Comparator.comparingLong(EffectCue::tick).reversed());
+        } else {
+            for (EffectCue cue : scene.effects().all()) if (cursor.crossedForward(cue.tick(), from, to)) cues.add(cue);
+            cues.sort(Comparator.comparingLong(EffectCue::tick));
+        }
+        return cues;
     }
 }
