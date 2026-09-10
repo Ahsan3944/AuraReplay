@@ -46,10 +46,30 @@ public final class DirectorExportManager {
             else if(job.state()==DirectorExportJob.State.FAILED){Throwable x=job.failure();capture.fail(x);fail.accept(x);}
         },1L,1L); return true;
     }
-    public boolean cancel(Player v){ExportHandle h=active.remove(v.getUniqueId());if(h==null)return false;h.job.cancel();h.capture.cancel();if(h.task!=null)h.task.cancel();return true;}
+
+    /** Pauses an export, preserving its checkpoint and .tmp manifest for resume. */
+    public boolean pause(Player v){
+        ExportHandle h=active.remove(v.getUniqueId());
+        if(h==null)return false;
+        h.job.pause();
+        h.capture.pause();
+        if(h.task!=null)h.task.cancel();
+        return true;
+    }
+
+    /** Cancels an export permanently and removes resumable checkpoint/temp state. */
+    public boolean cancel(Player v){
+        ExportHandle h=active.remove(v.getUniqueId());
+        if(h==null)return false;
+        h.job.cancel();
+        h.capture.cancel();
+        if(h.task!=null)h.task.cancel();
+        try{h.checkpoints.delete(h.checkpoint);}catch(IOException ignored){}
+        return true;
+    }
     public boolean active(Player v){return active.containsKey(v.getUniqueId());}
     public long progress(Player v){ExportHandle h=active.get(v.getUniqueId());return h==null?0:h.job.capturedFrames();}
     public long total(Player v){ExportHandle h=active.get(v.getUniqueId());return h==null?0:h.job.spec().frameCount();}
-    public void cancelAll(){active.values().forEach(h->{h.job.cancel();h.capture.cancel();if(h.task!=null)h.task.cancel();});active.clear();}
+    public void cancelAll(){active.values().forEach(h->{h.job.cancel();h.capture.cancel();if(h.task!=null)h.task.cancel();try{h.checkpoints.delete(h.checkpoint);}catch(IOException ignored){}});active.clear();}
     private static final class ExportHandle{final DirectorExportJob job;final DirectorCaptureSession capture;final Path checkpoint;final DirectorExportCheckpointStore checkpoints;BukkitTask task;ExportHandle(DirectorExportJob j,DirectorCaptureSession c,Path p,DirectorExportCheckpointStore s){job=j;capture=c;checkpoint=p;checkpoints=s;}}
 }
