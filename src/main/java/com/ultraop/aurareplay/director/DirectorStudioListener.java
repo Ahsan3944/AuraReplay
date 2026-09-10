@@ -130,7 +130,7 @@ public final class DirectorStudioListener implements Listener {
         var points = shot.path().points();
         if (slot < 18) {
             if (slot >= points.size()) return;
-            state.selectedPathTick = points.get(slot).tick();
+            state.selectedPathTick = (long) points.get(slot).tick();
             state.timelineTick = shot.startTick() + state.selectedPathTick;
             player.sendMessage(ChatColor.GREEN + "Selected path point at local tick " + state.selectedPathTick + ".");
             studio.openPathEditor(player, scene.name(), shotId);
