@@ -7,6 +7,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
@@ -47,51 +48,90 @@ public final class DirectorCommandHandler {
             }
             return true;
         }
-        if (args.length < 6 || args.length > 8) {
-            player.sendMessage(ChatColor.YELLOW + "Usage: /aurareplay director export <scene> <start> <end> <fps> [width] [height]");
+
+        boolean resume = args.length >= 3 && args[2].equalsIgnoreCase("resume");
+        int specOffset = resume ? 3 : 2;
+        int minimumArgs = resume ? 7 : 6;
+        int maximumArgs = resume ? 9 : 8;
+        if (args.length < minimumArgs || args.length > maximumArgs) {
+            player.sendMessage(ChatColor.YELLOW + (resume
+                    ? "Usage: /aurareplay director export resume <scene> <start> <end> <fps> [width] [height]"
+                    : "Usage: /aurareplay director export <scene> <start> <end> <fps> [width] [height]"));
             return true;
         }
-        Scene scene = engine.sceneManager().get(args[2]).orElse(null);
+
+        Scene scene = engine.sceneManager().get(args[specOffset]).orElse(null);
         if (scene == null) {
-            player.sendMessage(ChatColor.RED + "Scene not found: " + args[2]);
+            player.sendMessage(ChatColor.RED + "Scene not found: " + args[specOffset]);
             return true;
         }
         try {
-            long start = Long.parseLong(args[3]);
-            long end = Long.parseLong(args[4]);
-            int fps = Integer.parseInt(args[5]);
-            int width = args.length >= 7 ? Integer.parseInt(args[6]) : DEFAULT_WIDTH;
-            int height = args.length >= 8 ? Integer.parseInt(args[7]) : DEFAULT_HEIGHT;
+            long start = Long.parseLong(args[specOffset + 1]);
+            long end = Long.parseLong(args[specOffset + 2]);
+            int fps = Integer.parseInt(args[specOffset + 3]);
+            int width = args.length >= specOffset + 5 ? Integer.parseInt(args[specOffset + 4]) : DEFAULT_WIDTH;
+            int height = args.length >= specOffset + 6 ? Integer.parseInt(args[specOffset + 5]) : DEFAULT_HEIGHT;
             DirectorExportSpec spec = new DirectorExportSpec(scene.name(), start, end, fps, width, height);
             if (spec.frameCount() > MAX_EXPORT_FRAMES) {
                 player.sendMessage(ChatColor.RED + "Export is too large: " + spec.frameCount() + " frames (maximum " + MAX_EXPORT_FRAMES + ").");
                 return true;
             }
+
             Path output = engine.plugin().getDataFolder().toPath()
                     .resolve("exports")
                     .resolve(safeFileName(scene.name()) + "-" + start + "-" + end + "-" + fps + "fps.json");
-            boolean started = engine.directorExportManager().start(
-                    player,
-                    spec,
-                    tick -> engine.directorController().sample(player, scene, tick),
-                    output,
-                    written -> {
-                        engine.directorController().stop(player);
-                        player.sendMessage(ChatColor.GREEN + "Director export written: " + written.toAbsolutePath());
-                    },
-                    failure -> {
-                        engine.directorController().stop(player);
-                        player.sendMessage(ChatColor.RED + "Director export failed: " + failure.getMessage());
-                    });
-            if (!started) {
-                player.sendMessage(ChatColor.RED + "You already have an active Director export. Use export status or export cancel.");
-                return true;
+            Path checkpoint = output.resolveSibling(output.getFileName() + ".checkpoint.json");
+
+            if (resume) {
+                if (!java.nio.file.Files.exists(checkpoint)) {
+                    player.sendMessage(ChatColor.RED + "No Director export checkpoint found for this export.");
+                    return true;
+                }
+                boolean started = engine.directorExportManager().resume(
+                        player,
+                        spec,
+                        tick -> engine.directorController().sample(player, scene, tick),
+                        output,
+                        checkpoint,
+                        written -> {
+                            engine.directorController().stop(player);
+                            player.sendMessage(ChatColor.GREEN + "Director export resumed and written: " + written.toAbsolutePath());
+                        },
+                        failure -> {
+                            engine.directorController().stop(player);
+                            player.sendMessage(ChatColor.RED + "Director export resume failed: " + failure.getMessage());
+                        });
+                if (!started) {
+                    player.sendMessage(ChatColor.RED + "You already have an active Director export. Use export status or export cancel.");
+                    return true;
+                }
+                player.sendMessage(ChatColor.YELLOW + "Director export resumed from checkpoint. Use export status to check progress.");
+            } else {
+                boolean started = engine.directorExportManager().start(
+                        player,
+                        spec,
+                        tick -> engine.directorController().sample(player, scene, tick),
+                        output,
+                        written -> {
+                            engine.directorController().stop(player);
+                            player.sendMessage(ChatColor.GREEN + "Director export written: " + written.toAbsolutePath());
+                        },
+                        failure -> {
+                            engine.directorController().stop(player);
+                            player.sendMessage(ChatColor.RED + "Director export failed: " + failure.getMessage());
+                        });
+                if (!started) {
+                    player.sendMessage(ChatColor.RED + "You already have an active Director export. Use export status or export cancel.");
+                    return true;
+                }
+                player.sendMessage(ChatColor.YELLOW + "Director export started: " + spec.frameCount() + " frames. Use export status to check progress.");
             }
-            player.sendMessage(ChatColor.YELLOW + "Director export started: " + spec.frameCount() + " frames. Use export status to check progress.");
         } catch (NumberFormatException ex) {
             player.sendMessage(ChatColor.RED + "Start, end, FPS, width and height must be numbers.");
         } catch (IllegalArgumentException ex) {
             player.sendMessage(ChatColor.RED + ex.getMessage());
+        } catch (IOException ex) {
+            player.sendMessage(ChatColor.RED + "Could not resume Director export: " + ex.getMessage());
         }
         return true;
     }
@@ -116,6 +156,7 @@ public final class DirectorCommandHandler {
             List<String> values = new java.util.ArrayList<>();
             values.add("cancel");
             values.add("status");
+            values.add("resume");
             values.addAll(engine.sceneManager().all().stream().map(Scene::name).toList());
             return values;
         }
