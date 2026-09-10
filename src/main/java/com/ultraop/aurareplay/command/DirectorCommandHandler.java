@@ -1,7 +1,6 @@
 package com.ultraop.aurareplay.command;
 
 import com.ultraop.aurareplay.core.AuraEngine;
-import com.ultraop.aurareplay.director.DirectorExportService;
 import com.ultraop.aurareplay.director.DirectorExportSpec;
 import com.ultraop.aurareplay.scene.Scene;
 import org.bukkit.ChatColor;
@@ -33,6 +32,21 @@ public final class DirectorCommandHandler {
     }
 
     private static boolean export(AuraEngine engine, Player player, String[] args) {
+        if (args.length >= 3 && args[2].equalsIgnoreCase("cancel")) {
+            boolean cancelled = engine.directorExportManager().cancel(player);
+            player.sendMessage(cancelled ? ChatColor.YELLOW + "Director export cancelled." : ChatColor.YELLOW + "No active Director export.");
+            return true;
+        }
+        if (args.length >= 3 && args[2].equalsIgnoreCase("status")) {
+            if (!engine.directorExportManager().active(player)) {
+                player.sendMessage(ChatColor.YELLOW + "No active Director export.");
+            } else {
+                player.sendMessage(ChatColor.AQUA + "Director export progress: "
+                        + engine.directorExportManager().progress(player) + "/"
+                        + engine.directorExportManager().total(player) + " frames.");
+            }
+            return true;
+        }
         if (args.length < 6 || args.length > 8) {
             player.sendMessage(ChatColor.YELLOW + "Usage: /aurareplay director export <scene> <start> <end> <fps> [width] [height]");
             return true;
@@ -53,22 +67,31 @@ public final class DirectorCommandHandler {
                 player.sendMessage(ChatColor.RED + "Export is too large: " + spec.frameCount() + " frames (maximum " + MAX_EXPORT_FRAMES + ").");
                 return true;
             }
-
-            DirectorExportService service = new DirectorExportService();
             Path output = engine.plugin().getDataFolder().toPath()
                     .resolve("exports")
                     .resolve(safeFileName(scene.name()) + "-" + start + "-" + end + "-" + fps + "fps.json");
-            player.sendMessage(ChatColor.YELLOW + "Rendering " + spec.frameCount() + " Director frames...");
-            service.export(output, spec, tick -> engine.directorController().sample(player, scene, tick));
-            engine.directorController().stop(player);
-            player.sendMessage(ChatColor.GREEN + "Director export written: " + output.toAbsolutePath());
+            boolean started = engine.directorExportManager().start(
+                    player,
+                    spec,
+                    tick -> engine.directorController().sample(player, scene, tick),
+                    output,
+                    written -> {
+                        engine.directorController().stop(player);
+                        player.sendMessage(ChatColor.GREEN + "Director export written: " + written.toAbsolutePath());
+                    },
+                    failure -> {
+                        engine.directorController().stop(player);
+                        player.sendMessage(ChatColor.RED + "Director export failed: " + failure.getMessage());
+                    });
+            if (!started) {
+                player.sendMessage(ChatColor.RED + "You already have an active Director export. Use export status or export cancel.");
+                return true;
+            }
+            player.sendMessage(ChatColor.YELLOW + "Director export started: " + spec.frameCount() + " frames. Use export status to check progress.");
         } catch (NumberFormatException ex) {
             player.sendMessage(ChatColor.RED + "Start, end, FPS, width and height must be numbers.");
         } catch (IllegalArgumentException ex) {
             player.sendMessage(ChatColor.RED + ex.getMessage());
-        } catch (Exception ex) {
-            engine.directorController().stop(player);
-            player.sendMessage(ChatColor.RED + "Director export failed: " + ex.getMessage());
         }
         return true;
     }
@@ -90,7 +113,11 @@ public final class DirectorCommandHandler {
             return values;
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("director") && args[1].equalsIgnoreCase("export")) {
-            return engine.sceneManager().all().stream().map(Scene::name).toList();
+            List<String> values = new java.util.ArrayList<>();
+            values.add("cancel");
+            values.add("status");
+            values.addAll(engine.sceneManager().all().stream().map(Scene::name).toList());
+            return values;
         }
         return List.of();
     }
