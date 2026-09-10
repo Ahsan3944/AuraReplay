@@ -45,7 +45,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 /** Paper 1.21.11 renderer for viewer-local virtual player actors. */
@@ -104,7 +103,7 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         if (appearance.glowing() != null) flags = overrideFlag(flags, EntityFlags.GLOWING, appearance.glowing());
         if (appearance.fire() != null) flags = overrideFlag(flags, EntityFlags.ON_FIRE, appearance.fire());
         applyFlags(state.player(), flags);
-        if (appearance.pose() != null) state.player().setPose(toNmsPose(appearance.pose()), true);
+        if (appearance.pose() != null) state.player().setPose(toNmsPose(appearance.pose()));
         EquipmentSnapshot source = snapshot == null ? null : snapshot.equipment();
         EquipmentSnapshot equipment = mergeEquipment(source, appearance);
         if (!sameEquipment(state.equipment(), equipment)) { sendEquipment(viewer, state.player(), equipment); state.setEquipment(equipment); }
