@@ -32,7 +32,6 @@ public final class DirectorExportJob {
         this(spec, sampler, frameConsumer, true);
     }
 
-    /** Creates a job that can stream frames without retaining the full export in RAM. */
     public DirectorExportJob(DirectorExportSpec spec,
                              Function<Double, CameraTransform> sampler,
                              Consumer<DirectorFrame> frameConsumer,
@@ -54,8 +53,17 @@ public final class DirectorExportJob {
     public Throwable failure() { return failure; }
 
     public void start() {
+        startAt(0L);
+    }
+
+    /** Starts a fresh job at frame zero. */
+    public void startAt(long frameIndex) {
         if (state != State.READY) throw new IllegalStateException("job is not ready");
-        state = State.RUNNING;
+        if (frameIndex < 0 || frameIndex > spec.frameCount())
+            throw new IllegalArgumentException("frameIndex must be within export frame range");
+        nextFrame = frameIndex;
+        capturedFrames = frameIndex;
+        state = frameIndex == spec.frameCount() ? State.COMPLETED : State.RUNNING;
     }
 
     /** Captures at most maxFrames and returns the number captured during this step. */
