@@ -11,7 +11,7 @@ import java.util.function.Function;
  * It applies each sampled frame to the viewer through the in-game render bridge.
  */
 public final class DirectorRealtimeRenderSession {
-    public enum State { READY, RUNNING, COMPLETED, STOPPED }
+    public enum State { READY, RUNNING, COMPLETED, STOPPED, FAILED }
 
     private final DirectorExportSpec spec;
     private final DirectorInGameRenderBridge bridge;
@@ -19,6 +19,7 @@ public final class DirectorRealtimeRenderSession {
     private final Function<Double, CameraTransform> sampler;
     private final DirectorRealtimeRenderScheduler scheduler;
     private State state = State.READY;
+    private Throwable failure;
 
     public DirectorRealtimeRenderSession(DirectorExportSpec spec,
                                          DirectorInGameRenderBridge bridge,
@@ -35,6 +36,7 @@ public final class DirectorRealtimeRenderSession {
     public State state() { return state; }
     public long emittedFrames() { return scheduler.emittedFrames(); }
     public long elapsedTicks() { return scheduler.elapsedTicks(); }
+    public Throwable failure() { return failure; }
 
     public void start() {
         if (state != State.READY) throw new IllegalStateException("session is not ready");
@@ -48,18 +50,25 @@ public final class DirectorRealtimeRenderSession {
 
         int due = scheduler.advance();
         int emitted = 0;
-        while (emitted < due && scheduler.emittedFrames() < spec.frameCount()) {
-            long frameIndex = scheduler.emittedFrames();
-            DirectorFrame frame = DirectorExportPlanner.sample(spec, frameIndex, sampler);
-            if (!bridge.render(viewer, frame)) {
-                state = State.STOPPED;
-                break;
+        try {
+            while (emitted < due && scheduler.emittedFrames() < spec.frameCount()) {
+                long frameIndex = scheduler.emittedFrames();
+                DirectorFrame frame = DirectorExportPlanner.sample(spec, frameIndex, sampler);
+                if (!bridge.render(viewer, frame)) {
+                    state = State.STOPPED;
+                    break;
+                }
+                scheduler.markEmitted(1);
+                emitted++;
             }
-            scheduler.markEmitted(1);
-            emitted++;
+        } catch (Throwable ex) {
+            failure = ex;
+            state = State.FAILED;
         }
 
-        if (scheduler.emittedFrames() >= spec.frameCount()) state = State.COMPLETED;
+        if (state == State.RUNNING && scheduler.emittedFrames() >= spec.frameCount()) {
+            state = State.COMPLETED;
+        }
         return emitted;
     }
 
