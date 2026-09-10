@@ -36,7 +36,7 @@ public final class DirectorExportManager {
         DirectorExportManifestStreamWriter manifest=new DirectorExportManifestStreamWriter(out);
         DirectorCaptureSink sink=external==null?manifest:new DirectorCaptureFanout(manifest,external);
         DirectorCaptureSession capture=new DirectorCaptureSession(s,sink);
-        if(resume){ manifest.resume(s,start); capture.startAt(start,false); } else capture.start();
+        if(resume){ manifest.resume(s,start); if(external!=null) external.start(s); capture.startAt(start,false); } else capture.start();
         DirectorExportCheckpointStore cps=new DirectorExportCheckpointStore();
         Consumer<DirectorFrame> consumer=frame->{ capture.accept(frame); try{ cps.save(checkpoint,new DirectorExportCheckpoint(s,frame.frameIndex()+1)); }catch(IOException ex){throw new IllegalStateException("failed to persist export checkpoint",ex);} };
         DirectorExportJob job=new DirectorExportJob(s,sampler,consumer,false); if(resume) job.startAt(start);
