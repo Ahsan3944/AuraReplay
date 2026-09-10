@@ -12,7 +12,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
-import java.util.List;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,23 +23,24 @@ public final class EffectsStudioService {
     private final AuraReplayPlugin plugin;
     private final Map<UUID, State> states = new ConcurrentHashMap<>();
 
-    public EffectsStudioService() {
-        this.plugin = AuraReplayPlugin.getPlugin(AuraReplayPlugin.class);
-    }
-
+    public EffectsStudioService() { this.plugin = AuraReplayPlugin.getPlugin(AuraReplayPlugin.class); }
     public boolean isEffectsInventory(String title) { return title != null && title.startsWith(TITLE_PREFIX); }
-
-    public void open(Player player) {
-        states.remove(player.getUniqueId());
-        openScenes(player);
-    }
+    public void open(Player player) { states.put(player.getUniqueId(), new State()); openScenes(player); }
 
     public void click(Player player, int slot, boolean rightClick) {
         State state = states.get(player.getUniqueId());
         if (state == null) { open(player); return; }
+        if (state.sceneName == null) { sceneListClick(player, state, slot); return; }
         Scene scene = scene(state.sceneName);
         if (scene == null) { states.remove(player.getUniqueId()); openScenes(player); return; }
-        if (state.cueId == null) { sceneListClick(player, state, slot); return; }
+        if (state.cueId == null) {
+            if (slot == 21) { add(player, state, EffectCue.Type.PARTICLE); return; }
+            if (slot == 22) { add(player, state, EffectCue.Type.SOUND); return; }
+            if (slot == 26) { state.sceneName = null; openScenes(player); return; }
+            List<EffectCue> cues = scene.effects().all();
+            if (slot >= 0 && slot < Math.min(20, cues.size())) { state.cueId = cues.get(slot).id(); openCueEditor(player, state, scene, cues.get(slot)); }
+            return;
+        }
         cueEditorClick(player, state, scene, slot, rightClick);
     }
 
@@ -47,8 +48,7 @@ public final class EffectsStudioService {
 
     private void openScenes(Player player) {
         Inventory inventory = org.bukkit.Bukkit.createInventory(null, 27, TITLE_PREFIX + "Scenes");
-        List<Scene> scenes = new ArrayList<>(plugin.engine().sceneManager().all());
-        scenes.sort(java.util.Comparator.comparing(Scene::name, String.CASE_INSENSITIVE_ORDER));
+        List<Scene> scenes = sortedScenes();
         for (int i = 0; i < Math.min(20, scenes.size()); i++) {
             Scene scene = scenes.get(i);
             item(inventory, i, Material.FIREWORK_ROCKET, scene.name(), "Cues: " + scene.effects().all().size(), "Duration: " + scene.timeline().durationTicks() + " ticks");
@@ -59,10 +59,10 @@ public final class EffectsStudioService {
 
     private void sceneListClick(Player player, State state, int slot) {
         if (slot == 26) { player.closeInventory(); return; }
-        List<Scene> scenes = new ArrayList<>(plugin.engine().sceneManager().all());
-        scenes.sort(java.util.Comparator.comparing(Scene::name, String.CASE_INSENSITIVE_ORDER));
+        List<Scene> scenes = sortedScenes();
         if (slot < 0 || slot >= Math.min(20, scenes.size())) return;
         state.sceneName = scenes.get(slot).name();
+        state.cueId = null;
         openCues(player, state, scenes.get(slot));
     }
 
@@ -124,21 +124,19 @@ public final class EffectsStudioService {
         openCueEditor(player, state, scene, cue);
     }
 
-    private Scene scene(String name) { return name == null ? null : plugin.engine().sceneManager().get(name).orElse(null); }
+    private List<Scene> sortedScenes() {
+        List<Scene> scenes = new ArrayList<>(plugin.engine().sceneManager().all());
+        scenes.sort(Comparator.comparing(Scene::name, String.CASE_INSENSITIVE_ORDER));
+        return scenes;
+    }
 
+    private Scene scene(String name) { return name == null ? null : plugin.engine().sceneManager().get(name).orElse(null); }
     private void item(Inventory inventory, int slot, Material material, String name, String... lore) {
-        ItemStack stack = new ItemStack(material);
-        ItemMeta meta = stack.getItemMeta();
+        ItemStack stack = new ItemStack(material); ItemMeta meta = stack.getItemMeta();
         meta.setDisplayName(ChatColor.AQUA + name);
         meta.setLore(java.util.Arrays.stream(lore).map(s -> ChatColor.GRAY + s).toList());
-        stack.setItemMeta(meta);
-        inventory.setItem(slot, stack);
+        stack.setItemMeta(meta); inventory.setItem(slot, stack);
     }
-
     private String fmt(double value) { return String.format(java.util.Locale.ROOT, "%.2f", value); }
-
-    private static final class State {
-        private String sceneName;
-        private String cueId;
-    }
+    private static final class State { private String sceneName; private String cueId; }
 }
