@@ -67,4 +67,18 @@ class DirectorExportJobTest {
         assertEquals(0, job.step(4));
         assertEquals(0, job.capturedFrames());
     }
+
+    @Test
+    void streamingJobDoesNotRetainFramesButKeepsProgress() {
+        DirectorExportSpec spec = new DirectorExportSpec("stream", 0, 100, 20, 640, 360);
+        DirectorExportJob job = new DirectorExportJob(spec,
+                tick -> new CameraTransform(tick.floatValue(), 0, 0, 0, 0, 0, 70),
+                frame -> { }, false);
+
+        assertFalse(job.retainsFrames());
+        assertEquals(10, job.step(10));
+        assertEquals(10, job.capturedFrames());
+        assertEquals(10, job.nextFrameIndex());
+        assertTrue(job.frames().isEmpty());
+    }
 }
