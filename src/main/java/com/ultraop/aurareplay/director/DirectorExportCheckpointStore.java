@@ -34,9 +34,9 @@ public final class DirectorExportCheckpointStore {
         String scene = stringField(json, "scene");
         long start = longField(json, "startTick");
         long end = longField(json, "endTick");
-        int fps = (int) longField(json, "fps");
-        int width = (int) longField(json, "width");
-        int height = (int) longField(json, "height");
+        int fps = Math.toIntExact(longField(json, "fps"));
+        int width = Math.toIntExact(longField(json, "width"));
+        int height = Math.toIntExact(longField(json, "height"));
         long next = longField(json, "nextFrameIndex");
         DirectorExportSpec actual = new DirectorExportSpec(scene, start, end, fps, width, height);
         if (!actual.equals(expected)) throw new IllegalArgumentException("checkpoint does not match export spec");
@@ -94,6 +94,10 @@ public final class DirectorExportCheckpointStore {
     private static long longField(String json, String name) {
         String marker = "\"" + name + "\":";
         int start = json.indexOf(marker);
+        if (start < 0) {
+            marker = "\"" + name + "\": ";
+            start = json.indexOf(marker);
+        }
         if (start < 0) throw new IllegalArgumentException("missing checkpoint field: " + name);
         start += marker.length();
         int end = start;
