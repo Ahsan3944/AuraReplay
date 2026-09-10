@@ -7,7 +7,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.util.Objects;
 
-/** Cleans viewer-local virtual playback and Studio state when a player leaves. */
+/** Cleans viewer-local virtual playback, Director rendering and Studio state when a player leaves. */
 public final class PlaybackLifecycleListener implements Listener {
     private final AuraEngine engine;
 
@@ -18,8 +18,8 @@ public final class PlaybackLifecycleListener implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         engine.directorRealtimeRenderManager().stop(event.getPlayer());
+        engine.directorController().stop(event.getPlayer());
         engine.actorPlaybackController().stopAll(event.getPlayer());
-        engine.cameraController().stop(event.getPlayer());
         engine.studioController().close(event.getPlayer());
         engine.directorStudioService().close(event.getPlayer());
     }
