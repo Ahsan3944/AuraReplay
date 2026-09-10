@@ -13,7 +13,7 @@ class DirectorExportJobTest {
     @Test
     void capturesIncrementallyWithoutDuplicateFrames() {
         DirectorExportJob job = new DirectorExportJob(spec(), tick ->
-                new CameraTransform(tick, 0, 0, tick, 0, 0, 70));
+                new CameraTransform(tick.floatValue(), 0, 0, tick.floatValue(), 0, 0, 70));
 
         assertEquals(1, job.step(1));
         assertEquals(1, job.capturedFrames());
@@ -31,7 +31,7 @@ class DirectorExportJobTest {
     void respectsPerStepBudgetAndCanFinishLater() {
         DirectorExportSpec spec = new DirectorExportSpec("job", 0, 5, 20, 640, 360);
         DirectorExportJob job = new DirectorExportJob(spec, tick ->
-                new CameraTransform(tick, 0, 0, 0, 0, 0, 70));
+                new CameraTransform(tick.floatValue(), 0, 0, 0, 0, 0, 70));
 
         assertEquals(2, job.step(2));
         assertEquals(2, job.capturedFrames());
