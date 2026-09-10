@@ -34,6 +34,27 @@ class DirectorTransitionEvaluatorTest {
     }
 
     @Test
+    void blendBoundaryIsContinuousAtStartAndEnd() {
+        DirectorTransitionEvaluator.Result start = DirectorTransitionEvaluator.evaluate(
+                shot(DirectorShot.Transition.BLEND), shot(DirectorShot.Transition.CUT),
+                camera(20), camera(0), 20);
+        DirectorTransitionEvaluator.Result justBeforeEnd = DirectorTransitionEvaluator.evaluate(
+                shot(DirectorShot.Transition.BLEND), shot(DirectorShot.Transition.CUT),
+                camera(20), camera(0), 29.999);
+        DirectorTransitionEvaluator.Result end = DirectorTransitionEvaluator.evaluate(
+                shot(DirectorShot.Transition.BLEND), shot(DirectorShot.Transition.CUT),
+                camera(20), camera(0), 30);
+
+        assertEquals(0, start.transform().x(), 1e-9);
+        assertEquals(0.0, start.progress(), 1e-9);
+        assertTrue(start.transitioned());
+        assertTrue(justBeforeEnd.transform().x() < 20);
+        assertEquals(20, end.transform().x(), 1e-9);
+        assertEquals(1.0, end.progress(), 1e-9);
+        assertFalse(end.transitioned());
+    }
+
+    @Test
     void blendCompletesAfterTenTicks() {
         DirectorTransitionEvaluator.Result result = DirectorTransitionEvaluator.evaluate(
                 shot(DirectorShot.Transition.BLEND), shot(DirectorShot.Transition.CUT),
