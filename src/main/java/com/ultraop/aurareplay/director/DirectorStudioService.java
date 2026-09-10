@@ -10,7 +10,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
+import org.bukkit.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.Comparator;
@@ -50,6 +50,10 @@ public final class DirectorStudioService {
         inventory.setItem(25, item(Material.LEVER, "Next Transition", "Cycle CUT/BLEND/FADE"));
         inventory.setItem(26, item(Material.ARROW, "Back"));
         player.openInventory(inventory);
+    }
+
+    public boolean isInventory(Inventory inventory) {
+        return inventory != null && inventory.getHolder() instanceof Holder;
     }
 
     public boolean addShot(Scene scene) {
