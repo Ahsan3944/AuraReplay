@@ -4,11 +4,12 @@ import com.ultraop.aurareplay.actor.ActorId;
 import com.ultraop.aurareplay.actor.ActorSample;
 import com.ultraop.aurareplay.camera.CameraTransform;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/** Immutable render packet containing the camera and all scene actor samples for one frame. */
+/** Immutable deterministic snapshot of one complete Director render frame. */
 public record DirectorRenderFrame(
         long frameIndex,
         double sceneTick,
@@ -20,6 +21,6 @@ public record DirectorRenderFrame(
         if (!Double.isFinite(sceneTick)) throw new IllegalArgumentException("sceneTick must be finite");
         Objects.requireNonNull(camera, "camera");
         Objects.requireNonNull(actors, "actors");
-        actors = Map.copyOf(new LinkedHashMap<>(actors));
+        actors = Collections.unmodifiableMap(new LinkedHashMap<>(actors));
     }
 }
