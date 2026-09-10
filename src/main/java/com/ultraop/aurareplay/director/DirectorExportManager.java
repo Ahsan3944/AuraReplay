@@ -30,6 +30,11 @@ public final class DirectorExportManager {
         if(cp.complete()) throw new IllegalArgumentException("checkpoint is already complete");
         return startInternal(v,s,sampler,out,external,cp.nextFrameIndex(),true,checkpoint,ok,fail);
     }
+    /** Resumes a previously discovered recovery candidate using its validated checkpoint metadata. */
+    public boolean resume(Player v, DirectorExportRecovery recovery, Function<Double, CameraTransform> sampler, Consumer<Path> ok, Consumer<Throwable> fail) throws IOException {
+        Objects.requireNonNull(recovery, "recovery");
+        return resume(v, recovery.spec(), sampler, recovery.output(), recovery.checkpoint(), ok, fail);
+    }
     private boolean startInternal(Player v, DirectorExportSpec s, Function<Double, CameraTransform> sampler, Path out, DirectorCaptureSink external, long start, boolean resume, Path checkpoint, Consumer<Path> ok, Consumer<Throwable> fail) {
         Objects.requireNonNull(v); Objects.requireNonNull(s); Objects.requireNonNull(sampler); Objects.requireNonNull(out); Objects.requireNonNull(ok); Objects.requireNonNull(fail);
         UUID id=v.getUniqueId(); if(active.containsKey(id)) return false;
@@ -46,27 +51,10 @@ public final class DirectorExportManager {
             else if(job.state()==DirectorExportJob.State.FAILED){Throwable x=job.failure();capture.fail(x);fail.accept(x);}
         },1L,1L); return true;
     }
-
     /** Pauses an export, preserving its checkpoint and .tmp manifest for resume. */
-    public boolean pause(Player v){
-        ExportHandle h=active.remove(v.getUniqueId());
-        if(h==null)return false;
-        h.job.pause();
-        h.capture.pause();
-        if(h.task!=null)h.task.cancel();
-        return true;
-    }
-
+    public boolean pause(Player v){ ExportHandle h=active.remove(v.getUniqueId()); if(h==null)return false; h.job.pause(); h.capture.pause(); if(h.task!=null)h.task.cancel(); return true; }
     /** Cancels an export permanently and removes resumable checkpoint/temp state. */
-    public boolean cancel(Player v){
-        ExportHandle h=active.remove(v.getUniqueId());
-        if(h==null)return false;
-        h.job.cancel();
-        h.capture.cancel();
-        if(h.task!=null)h.task.cancel();
-        try{h.checkpoints.delete(h.checkpoint);}catch(IOException ignored){}
-        return true;
-    }
+    public boolean cancel(Player v){ ExportHandle h=active.remove(v.getUniqueId()); if(h==null)return false; h.job.cancel(); h.capture.cancel(); if(h.task!=null)h.task.cancel(); try{h.checkpoints.delete(h.checkpoint);}catch(IOException ignored){} return true; }
     public boolean active(Player v){return active.containsKey(v.getUniqueId());}
     public long progress(Player v){ExportHandle h=active.get(v.getUniqueId());return h==null?0:h.job.capturedFrames();}
     public long total(Player v){ExportHandle h=active.get(v.getUniqueId());return h==null?0:h.job.spec().frameCount();}
