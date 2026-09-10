@@ -25,7 +25,7 @@ public final class DirectorTransitionEvaluator {
         if (current.transition() == DirectorShot.Transition.FADE) {
             return new Result(currentTransform, progress < 1.0d, true, progress);
         }
-        return new Result(previousTransform.interpolate(currentTransform, progress), progress < 1.0d, false, progress);
+        return new Result(CameraTransform.interpolate(previousTransform, currentTransform, progress), progress < 1.0d, false, progress);
     }
 
     private static double clamp(double value) {
