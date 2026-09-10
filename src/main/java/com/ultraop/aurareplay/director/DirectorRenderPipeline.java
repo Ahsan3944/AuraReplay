@@ -20,18 +20,22 @@ public final class DirectorRenderPipeline {
             Iterable<ActorId> actorIds,
             Function<ActorId, ActorSample> actorSampler) {
         Objects.requireNonNull(spec, "spec");
-        Objects.requireNonNull(cameraSampler, "cameraSampler");
-        Objects.requireNonNull(actorIds, "actorIds");
-        Objects.requireNonNull(actorSampler, "actorSampler");
-        double tick = spec.tickForFrame(frameIndex);
-        CameraTransform camera = Objects.requireNonNull(cameraSampler.apply(tick), "camera sampler result");
-        Map<ActorId, ActorSample> actors = new LinkedHashMap<>();
-        for (ActorId actorId : actorIds) {
-            Objects.requireNonNull(actorId, "actorId");
-            ActorSample sample = actorSampler.apply(actorId);
-            if (sample != null) actors.put(actorId, sample);
+        return sampleAt(spec, frameIndex, spec.tickForFrame(frameIndex), cameraSampler, actorIds, actorSampler);
+    }
+
+    /** Samples one complete frame at an exact scene tick, preserving the supplied actor order. */
+    public static DirectorRenderFrame sampleAt(
+            DirectorExportSpec spec,
+            long frameIndex,
+            double sceneTick,
+            Function<Double, CameraTransform> cameraSampler,
+            Iterable<ActorId> actorIds,
+            Function<ActorId, ActorSample> actorSampler) {
+        Objects.requireNonNull(spec, "spec");
+        if (frameIndex < 0 || frameIndex >= spec.frameCount()) {
+            throw new IndexOutOfBoundsException("frameIndex: " + frameIndex);
         }
-        return new DirectorRenderFrame(frameIndex, tick, camera, actors);
+        return sampleAt(frameIndex, sceneTick, cameraSampler, actorIds, actorSampler);
     }
 
     public static DirectorRenderFrame sampleAt(
