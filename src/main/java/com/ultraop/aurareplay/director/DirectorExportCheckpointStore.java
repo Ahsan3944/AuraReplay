@@ -77,7 +77,7 @@ public final class DirectorExportCheckpointStore {
                     case 'n' -> value.append('\n');
                     case 'r' -> value.append('\r');
                     case 't' -> value.append('\t');
-                    default -> throw new IllegalArgumentException("invalid checkpoint escape: \\" + c);
+                    default -> throw new IllegalArgumentException("invalid checkpoint escape character: " + c);
                 }
                 escaped = false;
             } else if (c == '\\') {
