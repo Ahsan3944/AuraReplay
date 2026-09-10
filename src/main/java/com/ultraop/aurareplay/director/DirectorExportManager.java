@@ -6,7 +6,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
-import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
@@ -15,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-/** Coordinates incremental main-thread sampling and asynchronous manifest persistence. */
+/** Coordinates incremental main-thread sampling, capture delivery, and asynchronous manifest persistence. */
 public final class DirectorExportManager {
     private static final int DEFAULT_FRAMES_PER_TICK = 8;
 
@@ -38,6 +37,21 @@ public final class DirectorExportManager {
                          Path output,
                          Consumer<Path> onComplete,
                          Consumer<Throwable> onFailure) {
+        return start(viewer, spec, sampler, output, null, onComplete, onFailure);
+    }
+
+    /**
+     * Starts an export and optionally forwards every sampled frame through a
+     * lifecycle-aware capture sink. The sink receives the same deterministic
+     * frames that are persisted to the export manifest.
+     */
+    public boolean start(Player viewer,
+                         DirectorExportSpec spec,
+                         Function<Double, CameraTransform> sampler,
+                         Path output,
+                         DirectorCaptureSink captureSink,
+                         Consumer<Path> onComplete,
+                         Consumer<Throwable> onFailure) {
         Objects.requireNonNull(viewer, "viewer");
         Objects.requireNonNull(spec, "spec");
         Objects.requireNonNull(sampler, "sampler");
@@ -48,8 +62,15 @@ public final class DirectorExportManager {
         UUID id = viewer.getUniqueId();
         if (active.containsKey(id)) return false;
 
-        DirectorExportJob job = new DirectorExportJob(spec, sampler);
-        ExportHandle handle = new ExportHandle(job);
+        DirectorCaptureSession capture = captureSink == null ? null : new DirectorCaptureSession(spec, captureSink);
+        DirectorExportJob job = new DirectorExportJob(spec, tick -> {
+            CameraTransform transform = sampler.apply(tick);
+            DirectorFrame frame = new DirectorFrame(
+                    Math.round(tick * spec.fps() / 20.0), tick, transform);
+            if (capture != null) capture.accept(frame);
+            return transform;
+        });
+        ExportHandle handle = new ExportHandle(job, capture);
         active.put(id, handle);
         handle.task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (!active.containsKey(id)) return;
@@ -79,6 +100,7 @@ public final class DirectorExportManager {
         ExportHandle handle = active.remove(viewer.getUniqueId());
         if (handle == null) return false;
         handle.job.cancel();
+        if (handle.capture != null) handle.capture.cancel();
         if (handle.task != null) handle.task.cancel();
         return true;
     }
@@ -98,6 +120,7 @@ public final class DirectorExportManager {
     public void cancelAll() {
         active.values().forEach(handle -> {
             handle.job.cancel();
+            if (handle.capture != null) handle.capture.cancel();
             if (handle.task != null) handle.task.cancel();
         });
         active.clear();
@@ -105,8 +128,12 @@ public final class DirectorExportManager {
 
     private static final class ExportHandle {
         private final DirectorExportJob job;
+        private final DirectorCaptureSession capture;
         private BukkitTask task;
 
-        private ExportHandle(DirectorExportJob job) { this.job = job; }
+        private ExportHandle(DirectorExportJob job, DirectorCaptureSession capture) {
+            this.job = job;
+            this.capture = capture;
+        }
     }
 }
