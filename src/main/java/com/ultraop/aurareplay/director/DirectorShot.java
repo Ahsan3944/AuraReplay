@@ -2,7 +2,7 @@ package com.ultraop.aurareplay.director;
 
 import java.util.Objects;
 
-/** Immutable director shot occupying a range of the scene timeline. */
+/** Director shot with optional non-destructive camera path data. */
 public record DirectorShot(
         String id,
         long startTick,
@@ -10,10 +10,16 @@ public record DirectorShot(
         String cameraId,
         String targetActorId,
         Type type,
-        Transition transition
+        Transition transition,
+        DirectorPathTrack path
 ) {
     public enum Type { STATIC, FOLLOW, LOOK_AT, ORBIT, DOLLY, RAIL, SPLINE }
     public enum Transition { CUT, BLEND, FADE }
+
+    public DirectorShot(String id, long startTick, long endTick, String cameraId,
+                        String targetActorId, Type type, Transition transition) {
+        this(id, startTick, endTick, cameraId, targetActorId, type, transition, new DirectorPathTrack());
+    }
 
     public DirectorShot {
         id = normalize(id, "id");
@@ -23,6 +29,7 @@ public record DirectorShot(
         targetActorId = targetActorId == null || targetActorId.isBlank() ? null : targetActorId.trim();
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(transition, "transition");
+        Objects.requireNonNull(path, "path");
     }
 
     public boolean contains(double tick) { return tick >= startTick && tick < endTick; }
