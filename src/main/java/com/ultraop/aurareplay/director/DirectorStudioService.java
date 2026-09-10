@@ -10,11 +10,11 @@ import com.ultraop.aurareplay.scene.SceneManager;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.entity.Player;
 
 import java.util.Comparator;
 import java.util.List;
@@ -72,7 +72,7 @@ public final class DirectorStudioService {
         inventory.setItem(10, item(Material.REPEATER, "Start +20", "Current: " + shot.startTick()));
         inventory.setItem(11, item(Material.COMPARATOR, "End -20", "Current: " + shot.endTick()));
         inventory.setItem(12, item(Material.COMPARATOR, "End +20", "Current: " + shot.endTick()));
-        inventory.setItem(13, item(Material.CAMERA, "Camera", "Current: " + shot.cameraId(), "Open camera picker"));
+        inventory.setItem(13, item(Material.SPYGLASS, "Camera", "Current: " + shot.cameraId(), "Open camera picker"));
         if (usesTarget(shot.type())) inventory.setItem(14, item(Material.PLAYER_HEAD, "Target", "Current: " + displayTarget(shot), "Open actor target picker"));
         inventory.setItem(15, item(Material.REPEATER, "Shot Type", "Current: " + shot.type(), "Cycle shot type"));
         inventory.setItem(16, item(Material.LEVER, "Transition", "Current: " + shot.transition(), "Cycle transition"));
@@ -91,10 +91,10 @@ public final class DirectorStudioService {
         for (int i = 0; i < Math.min(18, list.size()); i++) {
             CameraDefinition camera = list.get(i);
             boolean current = camera.id().equalsIgnoreCase(shot.cameraId());
-            inventory.setItem(i, item(current ? Material.LIME_DYE : Material.CAMERA, (current ? "[CURRENT] " : "") + camera.id(), "Name: " + camera.name(), current ? "Currently assigned" : "Click to assign"));
+            inventory.setItem(i, item(current ? Material.LIME_DYE : Material.SPYGLASS, (current ? "[CURRENT] " : "") + camera.id(), "Name: " + camera.name(), current ? "Currently assigned" : "Click to assign"));
         }
         inventory.setItem(18, item(Material.ARROW, "Back to Shot", "Return to shot configuration"));
-        if (list.size() > 18) inventory.setItem(19, item(Material.PAPER, "Showing first 18 cameras", "Use camera ids/management to reduce the list if needed"));
+        if (list.size() > 18) inventory.setItem(19, item(Material.PAPER, "Showing first 18 cameras", "Camera picker is intentionally contextual and compact"));
         inventory.setItem(26, item(Material.BARRIER, "Close", "Close Director Studio"));
         player.openInventory(inventory);
     }
@@ -174,7 +174,6 @@ public final class DirectorStudioService {
         DirectorShot shot = director.plan(scene).get(shotId).orElse(null);
         if (shot == null) return false;
         long end = Math.max(shot.startTick() + 1L, shot.endTick() + delta);
-        if (end <= shot.startTick()) return false;
         return replace(director.plan(scene), shot, new DirectorShot(shot.id(), shot.startTick(), end, shot.cameraId(), shot.targetActorId(), shot.type(), shot.transition(), shot.path()));
     }
 
