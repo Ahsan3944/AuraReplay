@@ -63,13 +63,7 @@ public final class DirectorExportManager {
         if (active.containsKey(id)) return false;
 
         DirectorCaptureSession capture = captureSink == null ? null : new DirectorCaptureSession(spec, captureSink);
-        DirectorExportJob job = new DirectorExportJob(spec, tick -> {
-            CameraTransform transform = sampler.apply(tick);
-            DirectorFrame frame = new DirectorFrame(
-                    Math.round(tick * spec.fps() / 20.0), tick, transform);
-            if (capture != null) capture.accept(frame);
-            return transform;
-        });
+        DirectorExportJob job = new DirectorExportJob(spec, sampler, capture == null ? null : capture::accept);
         ExportHandle handle = new ExportHandle(job, capture);
         active.put(id, handle);
         handle.task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
