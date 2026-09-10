@@ -21,6 +21,7 @@ public final class DirectorController {
     private final CameraController cameraController;
     private final ActorPlaybackController actorPlayback;
     private final Map<String, DirectorPlan> plans = new ConcurrentHashMap<>();
+    private final Map<String, Scene> scenes = new ConcurrentHashMap<>();
     private final Map<UUID, PlaybackState> playback = new ConcurrentHashMap<>();
 
     public DirectorController(CameraManager cameras, CameraController cameraController, ActorPlaybackController actorPlayback) {
@@ -31,11 +32,13 @@ public final class DirectorController {
 
     public DirectorPlan plan(Scene scene) {
         Objects.requireNonNull(scene, "scene");
+        scenes.put(scene.name(), scene);
         return plans.computeIfAbsent(scene.name(), ignored -> new DirectorPlan());
     }
 
     public void setPlan(Scene scene, DirectorPlan plan) {
         Objects.requireNonNull(scene, "scene");
+        scenes.put(scene.name(), scene);
         plans.put(scene.name(), Objects.requireNonNull(plan, "plan"));
     }
 
@@ -43,8 +46,7 @@ public final class DirectorController {
     public boolean start(Player viewer, Scene scene, double tick) {
         Objects.requireNonNull(viewer, "viewer");
         Objects.requireNonNull(scene, "scene");
-        DirectorPlan directorPlan = plan(scene);
-        if (directorPlan.at(tick).isEmpty()) return false;
+        if (!Double.isFinite(tick) || tick < 0.0 || plan(scene).at(tick).isEmpty()) return false;
         PlaybackState state = new PlaybackState(scene.name(), tick, true);
         playback.put(viewer.getUniqueId(), state);
         if (!renderAt(viewer, scene, tick)) {
@@ -57,7 +59,6 @@ public final class DirectorController {
 
     /** Resumes playback from the viewer's current director cursor. */
     public boolean play(Player viewer) {
-        Objects.requireNonNull(viewer, "viewer");
         PlaybackState state = playback.get(viewer.getUniqueId());
         if (state == null) return false;
         state.playing = true;
@@ -66,7 +67,6 @@ public final class DirectorController {
 
     /** Pauses playback while retaining the current camera and director cursor. */
     public boolean pause(Player viewer) {
-        Objects.requireNonNull(viewer, "viewer");
         PlaybackState state = playback.get(viewer.getUniqueId());
         if (state == null) return false;
         state.playing = false;
@@ -75,29 +75,23 @@ public final class DirectorController {
 
     /** Seeks the active director session and immediately renders the requested tick. */
     public boolean seek(Player viewer, double tick) {
-        Objects.requireNonNull(viewer, "viewer");
-        Objects.requireNonNull(Double.valueOf(tick), "tick");
+        if (!Double.isFinite(tick) || tick < 0.0) return false;
         PlaybackState state = playback.get(viewer.getUniqueId());
         if (state == null) return false;
-        Scene scene = null;
-        for (DirectorPlan candidate : plans.values()) {
-            if (candidate == planByScene(state.sceneName)) {
-                scene = stateScene(state.sceneName);
-                break;
-            }
-        }
-        if (scene == null) return false;
-        if (scenePlan(scene).at(tick).isEmpty()) return false;
+        Scene scene = scenes.get(state.sceneName);
+        if (scene == null || plan(scene).at(tick).isEmpty()) return false;
+        if (!renderAt(viewer, scene, tick)) return false;
         state.tick = tick;
-        return renderAt(viewer, scene, tick);
+        return true;
     }
 
     /** Advances every playing director session by one Minecraft tick. */
     public void tick(Player viewer) {
         PlaybackState state = playback.get(viewer.getUniqueId());
         if (state == null || !state.playing) return;
-        DirectorPlan directorPlan = planByScene(state.sceneName);
-        if (directorPlan == null) {
+        DirectorPlan directorPlan = plans.get(state.sceneName);
+        Scene scene = scenes.get(state.sceneName);
+        if (directorPlan == null || scene == null) {
             stop(viewer);
             return;
         }
@@ -106,8 +100,7 @@ public final class DirectorController {
             stop(viewer);
             return;
         }
-        Scene scene = stateScene(state.sceneName);
-        if (scene == null || !renderAt(viewer, scene, nextTick)) {
+        if (!renderAt(viewer, scene, nextTick)) {
             stop(viewer);
             return;
         }
@@ -173,7 +166,6 @@ public final class DirectorController {
         cameraController.stop(viewer);
     }
 
-    /** Stops all director state while leaving no stale viewer-local playback sessions. */
     public void stopAll(Iterable<? extends Player> viewers) {
         viewers.forEach(this::stop);
     }
@@ -201,43 +193,8 @@ public final class DirectorController {
 
     public void clear() {
         playback.clear();
+        scenes.clear();
         plans.clear();
-    }
-
-    /* Scene objects are owned by the plan map through the caller. The playback cursor stores only its stable name. */
-    private DirectorPlan planByScene(String sceneName) {
-        return sceneName == null ? null : plans.get(sceneName);
-    }
-
-    private Scene stateScene(String sceneName) {
-        return SceneRegistryBridge.resolve(sceneName);
-    }
-
-    private DirectorPlan scenePlan(Scene scene) {
-        return plan(scene);
-    }
-
-    /** Minimal bridge populated by the engine so playback can resolve its scene by name without retaining stale Scene objects. */
-    public static final class SceneRegistryBridge {
-        private static final Map<String, Scene> SCENES = new ConcurrentHashMap<>();
-
-        private SceneRegistryBridge() { }
-
-        public static void register(Scene scene) {
-            if (scene != null) SCENES.put(scene.name(), scene);
-        }
-
-        public static void unregister(Scene scene) {
-            if (scene != null) SCENES.remove(scene.name(), scene);
-        }
-
-        public static Scene resolve(String sceneName) {
-            return sceneName == null ? null : SCENES.get(sceneName);
-        }
-
-        public static void clear() {
-            SCENES.clear();
-        }
     }
 
     private static final class PlaybackState {
