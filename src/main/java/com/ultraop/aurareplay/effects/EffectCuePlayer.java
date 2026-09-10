@@ -1,7 +1,9 @@
 package com.ultraop.aurareplay.effects;
 
+import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.entity.Player;
 
 import java.util.Locale;
@@ -20,7 +22,8 @@ public final class EffectCuePlayer {
         Sound sound;
         try { sound = Sound.valueOf(cue.key().toUpperCase(Locale.ROOT)); }
         catch (IllegalArgumentException ignored) { return; }
-        viewer.playSound(cue.x(), cue.y(), cue.z(), sound, cue.volume(), cue.pitch());
+        Location location = new Location(viewer.getWorld(), cue.x(), cue.y(), cue.z());
+        viewer.playSound(location, sound, SoundCategory.MASTER, cue.volume(), cue.pitch());
     }
 
     private static void playParticle(Player viewer, EffectCue cue) {
