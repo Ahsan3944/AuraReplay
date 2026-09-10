@@ -13,9 +13,7 @@ public final class CameraController {
 
     public CameraController(CameraBackend backend) { this.backend = backend; }
 
-    public void start(Player viewer, CameraDefinition camera) {
-        start(viewer, camera, 0.0);
-    }
+    public void start(Player viewer, CameraDefinition camera) { start(viewer, camera, 0.0); }
 
     public void start(Player viewer, CameraDefinition camera, double startTick) {
         stop(viewer);
@@ -35,7 +33,20 @@ public final class CameraController {
         return true;
     }
 
-    /** Returns the current playback tick for the viewer's active camera session. */
+    /** Applies a viewer-local transform without mutating the shared camera definition. */
+    public boolean overrideTransform(Player viewer, CameraTransform transform) {
+        CameraPlaybackSession session = sessions.get(viewer.getUniqueId());
+        if (session == null || !session.active()) return false;
+        backend.update(viewer, transform);
+        return true;
+    }
+
+    /** Returns the active camera definition for the viewer, if any. */
+    public CameraDefinition currentCamera(Player viewer) {
+        CameraPlaybackSession session = sessions.get(viewer.getUniqueId());
+        return session == null || !session.active() ? null : session.camera();
+    }
+
     public double currentTick(Player viewer) {
         CameraPlaybackSession session = sessions.get(viewer.getUniqueId());
         return session == null ? 0.0 : session.tick();
@@ -59,10 +70,7 @@ public final class CameraController {
         backend.deactivate(viewer);
     }
 
-    public void stopAll(Iterable<? extends Player> viewers) {
-        viewers.forEach(this::stop);
-    }
-
+    public void stopAll(Iterable<? extends Player> viewers) { viewers.forEach(this::stop); }
     public int sessionCount() { return sessions.size(); }
     public void clear() { sessions.clear(); }
 }
