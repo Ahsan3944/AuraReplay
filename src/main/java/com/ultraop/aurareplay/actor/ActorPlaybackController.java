@@ -67,6 +67,21 @@ public final class ActorPlaybackController {
         return playback == null ? null : playback.sampleState();
     }
 
+    /** Applies an already sampled actor state without advancing its playback cursor. */
+    public boolean renderSample(Player viewer, ActorId actorId, ActorSample sample) {
+        if (viewer == null || actorId == null || sample == null || !sample.exists()) return false;
+        Map<ActorId, ActorPlayback> viewerSessions = sessions.get(viewer.getUniqueId());
+        if (viewerSessions == null) return false;
+        ActorPlayback playback = viewerSessions.get(actorId);
+        if (playback == null) return false;
+        if (!playback.actor().visible()) {
+            backend.destroy(playback.actor(), viewer);
+            return false;
+        }
+        backend.update(playback.actor(), viewer, sample);
+        return true;
+    }
+
     public void tickScene(Player viewer, Iterable<ActorId> actorIds, double sceneTick) {
         Map<ActorId, ActorPlayback> viewerSessions=sessions.get(viewer.getUniqueId()); if(viewerSessions==null)return;
         for(ActorId actorId:actorIds){ActorPlayback playback=viewerSessions.get(actorId);if(playback==null)continue;ActorDefinition actor=playback.actor();if(!actor.visible()){backend.destroy(actor,viewer);continue;}if(!actor.frozen())playback.setScenePosition(sceneTick);prefetch(playback);render(playback,viewer);}
