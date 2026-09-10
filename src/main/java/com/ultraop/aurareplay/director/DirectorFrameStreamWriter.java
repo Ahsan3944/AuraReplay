@@ -132,7 +132,7 @@ public final class DirectorFrameStreamWriter implements DirectorCaptureSink {
         CameraTransform c = frame.camera();
         return "{\"type\":\"frame\",\"index\":" + frame.frameIndex()
                 + ",\"tick\":" + number(frame.sceneTick())
-                + ",\"camera\":{"x\":" + number(c.x())
+                + ",\"camera\":{\"x\":" + number(c.x())
                 + ",\"y\":" + number(c.y())
                 + ",\"z\":" + number(c.z())
                 + ",\"yaw\":" + number(c.yaw())
