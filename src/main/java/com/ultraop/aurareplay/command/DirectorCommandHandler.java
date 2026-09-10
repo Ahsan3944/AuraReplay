@@ -24,7 +24,10 @@ public final class DirectorCommandHandler {
     }
 
     public static List<String> complete(AuraEngine engine, String[] args) {
-        if (args.length == 1) return List.of("director");
+        if (args.length == 1) {
+            String prefix = args[0].toLowerCase(java.util.Locale.ROOT);
+            return "director".startsWith(prefix) ? List.of("director") : List.of();
+        }
         if (args.length == 2 && args[0].equalsIgnoreCase("director")) return engine.sceneManager().all().stream().map(Scene::name).toList();
         return List.of();
     }
