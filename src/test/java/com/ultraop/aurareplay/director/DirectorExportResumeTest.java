@@ -18,7 +18,9 @@ class DirectorExportResumeTest {
         DirectorExportSpec spec = new DirectorExportSpec("scene", 0, 4, 20, 640, 360);
         DirectorExportManifestStreamWriter first = new DirectorExportManifestStreamWriter(output);
         first.start(spec);
-        first.accept(frame(0, 0)); first.accept(frame(1, 1)); first.accept(frame(2, 2));
+        first.accept(frame(0, 0)); first.accept(frame(1, 1));
+        first.pause();
+
         DirectorExportManifestStreamWriter resumed = new DirectorExportManifestStreamWriter(output);
         resumed.resume(spec, 2);
         resumed.accept(frame(2, 2)); resumed.accept(frame(3, 3)); resumed.complete();
