@@ -14,11 +14,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-/** Coordinates incremental main-thread sampling, capture delivery, and asynchronous manifest persistence. */
+/** Coordinates incremental main-thread sampling and streaming export persistence. */
 public final class DirectorExportManager {
     private static final int DEFAULT_FRAMES_PER_TICK = 8;
 
     private final JavaPlugin plugin;
+    /** Retained for source/API compatibility; managed exports now use the streaming writer. */
+    @SuppressWarnings("unused")
     private final DirectorExportWriter writer;
     private final Map<UUID, ExportHandle> active = new ConcurrentHashMap<>();
 
@@ -41,9 +43,9 @@ public final class DirectorExportManager {
     }
 
     /**
-     * Starts an export and optionally forwards every sampled frame through a
-     * lifecycle-aware capture sink. The sink receives the same deterministic
-     * frames that are persisted to the export manifest.
+     * Starts an export using a disk-backed manifest sink. Frames are sampled in
+     * bounded batches and written incrementally, so export size no longer
+     * determines the job's retained heap usage.
      */
     public boolean start(Player viewer,
                          DirectorExportSpec spec,
@@ -62,8 +64,11 @@ public final class DirectorExportManager {
         UUID id = viewer.getUniqueId();
         if (active.containsKey(id)) return false;
 
-        DirectorCaptureSession capture = captureSink == null ? null : new DirectorCaptureSession(spec, captureSink);
-        DirectorExportJob job = new DirectorExportJob(spec, sampler, capture == null ? null : capture::accept);
+        DirectorExportManifestStreamWriter manifestSink = new DirectorExportManifestStreamWriter(output);
+        DirectorCaptureSession capture = new DirectorCaptureSession(
+                spec,
+                captureSink == null ? manifestSink : new DirectorCaptureFanout(manifestSink, captureSink));
+        DirectorExportJob job = new DirectorExportJob(spec, sampler, capture::accept, false);
         ExportHandle handle = new ExportHandle(job, capture);
         active.put(id, handle);
         handle.task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
@@ -74,22 +79,10 @@ public final class DirectorExportManager {
             active.remove(id, handle);
 
             if (job.state() == DirectorExportJob.State.COMPLETED) {
-                try {
-                    DirectorExportManifest manifest = new DirectorExportManifest(spec, job.frames());
-                    Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                        try {
-                            Path written = writer.write(output, manifest);
-                            Bukkit.getScheduler().runTask(plugin, () -> onComplete.accept(written));
-                        } catch (Throwable ex) {
-                            Bukkit.getScheduler().runTask(plugin, () -> onFailure.accept(ex));
-                        }
-                    });
-                } catch (Throwable ex) {
-                    onFailure.accept(ex);
-                }
+                onComplete.accept(output.toAbsolutePath().normalize());
             } else if (job.state() == DirectorExportJob.State.FAILED) {
                 Throwable failure = job.failure();
-                if (handle.capture != null) handle.capture.fail(failure);
+                capture.fail(failure);
                 onFailure.accept(failure);
             }
         }, 1L, 1L);
@@ -100,7 +93,7 @@ public final class DirectorExportManager {
         ExportHandle handle = active.remove(viewer.getUniqueId());
         if (handle == null) return false;
         handle.job.cancel();
-        if (handle.capture != null) handle.capture.cancel();
+        handle.capture.cancel();
         if (handle.task != null) handle.task.cancel();
         return true;
     }
@@ -120,7 +113,7 @@ public final class DirectorExportManager {
     public void cancelAll() {
         active.values().forEach(handle -> {
             handle.job.cancel();
-            if (handle.capture != null) handle.capture.cancel();
+            handle.capture.cancel();
             if (handle.task != null) handle.task.cancel();
         });
         active.clear();
