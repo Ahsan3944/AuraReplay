@@ -13,55 +13,22 @@ public final class StudioListener implements Listener {
     private final StudioController controller;
     private final ActorSourceBrowser sourceBrowser;
     private final MotionStudioService motionStudio;
+    private final AppearanceStudioService appearanceStudio;
 
     public StudioListener(StudioController controller, ActorSourceBrowser sourceBrowser) {
-        this.controller = controller;
-        this.sourceBrowser = sourceBrowser;
-        this.motionStudio = new MotionStudioService(controller);
+        this.controller=controller;this.sourceBrowser=sourceBrowser;this.motionStudio=new MotionStudioService(controller);this.appearanceStudio=new AppearanceStudioService(controller);
     }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority=EventPriority.HIGHEST)
     public void onClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player)) return;
-        if (!controller.isStudioInventory(event.getView().getTopInventory())) return;
-        event.setCancelled(true);
-        if (event.getClickedInventory() != event.getView().getTopInventory()) return;
-
-        if (event.getRawSlot() == 10 && event.getView().getTitle().contains("AuraReplay Studio")) {
-            sourceBrowser.openRecordings(player);
-            return;
-        }
-
-        StudioSession session = controller.session(player);
-        if (session != null && session.page() == StudioSession.Page.MOTION) {
-            motionStudio.click(player, event.getRawSlot());
-            return;
-        }
-
-        controller.click(player, event.getRawSlot());
-        session = controller.session(player);
-        if (session != null && session.page() == StudioSession.Page.MOTION) {
-            motionStudio.open(player);
-        }
+        if(!(event.getWhoClicked() instanceof Player player))return;if(!controller.isStudioInventory(event.getView().getTopInventory()))return;event.setCancelled(true);if(event.getClickedInventory()!=event.getView().getTopInventory())return;
+        StudioSession session=controller.session(player);
+        if(session!=null&&session.page()==StudioSession.Page.EQUIPMENT){appearanceStudio.click(player,event.getRawSlot(),event.isRightClick());return;}
+        if(event.getRawSlot()==10&&event.getView().getTitle().contains("AuraReplay Studio")){sourceBrowser.openRecordings(player);return;}
+        if(session!=null&&session.page()==StudioSession.Page.MOTION){motionStudio.click(player,event.getRawSlot());return;}
+        controller.click(player,event.getRawSlot());session=controller.session(player);
+        if(session!=null&&session.page()==StudioSession.Page.MOTION)motionStudio.open(player);else if(session!=null&&session.page()==StudioSession.Page.EQUIPMENT)appearanceStudio.open(player);
     }
-
     @EventHandler
-    public void onClose(InventoryCloseEvent event) {
-        if (!(event.getPlayer() instanceof Player player)) return;
-        if (!controller.isStudioInventory(event.getInventory())) return;
-        motionStudio.close(player);
-        Bukkit.getScheduler().runTask(controllerPlugin(player), () -> {
-            if (!player.isOnline()) {
-                controller.close(player);
-                return;
-            }
-            if (!controller.isStudioInventory(player.getOpenInventory().getTopInventory())) {
-                controller.close(player);
-            }
-        });
-    }
-
-    private org.bukkit.plugin.Plugin controllerPlugin(Player player) {
-        return player.getServer().getPluginManager().getPlugin("AuraReplay");
-    }
+    public void onClose(InventoryCloseEvent event){if(!(event.getPlayer() instanceof Player player))return;if(!controller.isStudioInventory(event.getInventory()))return;motionStudio.close(player);Bukkit.getScheduler().runTask(controllerPlugin(player),()->{if(!player.isOnline()){controller.close(player);return;}if(!controller.isStudioInventory(player.getOpenInventory().getTopInventory()))controller.close(player);});}
+    private org.bukkit.plugin.Plugin controllerPlugin(Player player){return player.getServer().getPluginManager().getPlugin("AuraReplay");}
 }
