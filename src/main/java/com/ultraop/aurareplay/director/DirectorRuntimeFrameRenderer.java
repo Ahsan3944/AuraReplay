@@ -4,6 +4,8 @@ import com.ultraop.aurareplay.actor.ActorDefinition;
 import com.ultraop.aurareplay.actor.ActorId;
 import com.ultraop.aurareplay.actor.ActorManager;
 import com.ultraop.aurareplay.actor.ActorSample;
+import com.ultraop.aurareplay.actor.ActorVisualState;
+import com.ultraop.aurareplay.actor.ActorVisualStateDiff;
 import com.ultraop.aurareplay.actor.VirtualActorBackend;
 import com.ultraop.aurareplay.camera.CameraController;
 import org.bukkit.entity.Player;
@@ -39,6 +41,7 @@ public final class DirectorRuntimeFrameRenderer {
     private final ActorManager actorManager;
     private final VirtualActorBackend actorBackend;
     private final Map<UUID, Set<ActorId>> renderedActors = new HashMap<>();
+    private final Map<UUID, Map<ActorId, ActorVisualState>> visualStates = new HashMap<>();
 
     public DirectorRuntimeFrameRenderer(CameraController camera, ActorManager actorManager, VirtualActorBackend actorBackend) {
         this.camera = Objects.requireNonNull(camera, "camera");
@@ -52,7 +55,8 @@ public final class DirectorRuntimeFrameRenderer {
 
     /**
      * Renders a frame while isolating actor failures. One broken actor cannot prevent
-     * the remaining actors from being updated or cleaned up.
+     * the remaining actors from being updated or cleaned up. Transform updates remain
+     * frame-accurate, while visual state packets are emitted only when their state changes.
      */
     public RenderResult renderFrame(Player viewer, DirectorRenderFrame frame) {
         Objects.requireNonNull(viewer, "viewer");
@@ -64,6 +68,8 @@ public final class DirectorRuntimeFrameRenderer {
         UUID viewerId = viewer.getUniqueId();
         Set<ActorId> current = new LinkedHashSet<>();
         Set<ActorId> previous = renderedActors.getOrDefault(viewerId, Set.of());
+        Map<ActorId, ActorVisualState> previousStates = visualStates.getOrDefault(viewerId, Map.of());
+        Map<ActorId, ActorVisualState> currentStates = new LinkedHashMap<>();
         Map<ActorId, Throwable> failures = new LinkedHashMap<>();
         int rendered = 0;
         int removed = 0;
@@ -74,7 +80,8 @@ public final class DirectorRuntimeFrameRenderer {
             ActorSample sample = entry.getValue();
             if (actor == null || sample == null) continue;
 
-            if (!actor.visible() || !sample.exists()) {
+            ActorVisualState state = ActorVisualState.from(sample);
+            if (!actor.visible() || !state.exists()) {
                 try {
                     actorBackend.destroy(actor, viewer);
                     removed++;
@@ -85,13 +92,23 @@ public final class DirectorRuntimeFrameRenderer {
             }
 
             try {
-                if (!previous.contains(id)) {
+                boolean spawned = !previous.contains(id);
+                if (spawned) {
                     actorBackend.spawn(actor, viewer);
                     actorBackend.updateIdentity(actor, viewer);
                 }
                 actorBackend.update(actor, viewer, sample.transform());
-                actorBackend.updateEquipment(actor, viewer, sample.source());
+
+                Set<ActorVisualStateDiff.Change> changes = ActorVisualStateDiff.between(
+                        previousStates.get(id), state);
+                if (spawned || changes.contains(ActorVisualStateDiff.Change.FLAGS)
+                        || changes.contains(ActorVisualStateDiff.Change.EQUIPMENT)
+                        || changes.contains(ActorVisualStateDiff.Change.IDENTITY)) {
+                    actorBackend.updateEquipment(actor, viewer, sample.source());
+                }
+
                 current.add(id);
+                currentStates.put(id, state);
                 rendered++;
             } catch (Throwable error) {
                 failures.put(id, error);
@@ -115,14 +132,21 @@ public final class DirectorRuntimeFrameRenderer {
             }
         }
 
-        if (current.isEmpty()) renderedActors.remove(viewerId);
-        else renderedActors.put(viewerId, current);
+        if (current.isEmpty()) {
+            renderedActors.remove(viewerId);
+            visualStates.remove(viewerId);
+        } else {
+            renderedActors.put(viewerId, current);
+            visualStates.put(viewerId, currentStates);
+        }
         return new RenderResult(frame.frameIndex(), true, rendered, removed, failures);
     }
 
     public void stop(Player viewer) {
         Objects.requireNonNull(viewer, "viewer");
-        Set<ActorId> previous = renderedActors.remove(viewer.getUniqueId());
+        UUID viewerId = viewer.getUniqueId();
+        Set<ActorId> previous = renderedActors.remove(viewerId);
+        visualStates.remove(viewerId);
         if (previous == null) return;
         for (ActorId id : previous) {
             actorManager.get(id).ifPresent(actor -> {
@@ -135,8 +159,15 @@ public final class DirectorRuntimeFrameRenderer {
         }
     }
 
-    public void clear() { renderedActors.clear(); }
-    public int renderedActorCount(Player viewer) { return renderedActors.getOrDefault(viewer.getUniqueId(), Set.of()).size(); }
+    public void clear() {
+        renderedActors.clear();
+        visualStates.clear();
+    }
+
+    public int renderedActorCount(Player viewer) {
+        return renderedActors.getOrDefault(viewer.getUniqueId(), Set.of()).size();
+    }
+
     public CameraController camera() { return camera; }
     public ActorManager actorManager() { return actorManager; }
     public VirtualActorBackend actorBackend() { return actorBackend; }
