@@ -83,6 +83,41 @@ public final class DirectorStudioService {
         player.openInventory(inventory);
     }
 
+    public void openCameraPicker(Player player, String sceneName, String shotId) {
+        Scene scene = scenes.get(sceneName).orElse(null);
+        DirectorShot shot = scene == null ? null : director.plan(scene).get(shotId).orElse(null);
+        if (scene == null || shot == null) { player.sendMessage(ChatColor.RED + "Shot is no longer available."); return; }
+        Inventory inventory = Bukkit.createInventory(new Holder(Mode.CAMERA, scene.name(), shot.id()), 27, CAMERA_TITLE + scene.name());
+        List<CameraDefinition> list = cameras();
+        for (int i = 0; i < Math.min(18, list.size()); i++) {
+            CameraDefinition camera = list.get(i);
+            boolean current = camera.id().equalsIgnoreCase(shot.cameraId());
+            inventory.setItem(i, item(current ? Material.LIME_DYE : Material.SPYGLASS, (current ? "[CURRENT] " : "") + camera.id(), "Name: " + camera.name(), current ? "Currently assigned" : "Click to assign"));
+        }
+        inventory.setItem(18, item(Material.ARROW, "Back to Shot", "Return to shot configuration"));
+        if (list.size() > 18) inventory.setItem(19, item(Material.PAPER, "Showing first 18 cameras", "Camera picker is intentionally contextual and compact"));
+        inventory.setItem(26, item(Material.BARRIER, "Close", "Close Director Studio"));
+        player.openInventory(inventory);
+    }
+
+    public void openTargetPicker(Player player, String sceneName, String shotId) {
+        Scene scene = scenes.get(sceneName).orElse(null);
+        DirectorShot shot = scene == null ? null : director.plan(scene).get(shotId).orElse(null);
+        if (scene == null || shot == null) { player.sendMessage(ChatColor.RED + "Shot is no longer available."); return; }
+        Inventory inventory = Bukkit.createInventory(new Holder(Mode.TARGET, scene.name(), shot.id()), 27, TARGET_TITLE + scene.name());
+        List<ActorDefinition> list = actors(scene);
+        for (int i = 0; i < Math.min(18, list.size()); i++) {
+            ActorDefinition actor = list.get(i);
+            String id = actor.id().toString();
+            boolean current = id.equalsIgnoreCase(shot.targetActorId());
+            inventory.setItem(i, item(current ? Material.LIME_DYE : Material.PLAYER_HEAD, (current ? "[CURRENT] " : "") + actor.name(), "Actor: " + id, current ? "Currently targeted" : "Click to assign"));
+        }
+        inventory.setItem(18, item(Material.BARRIER, "Clear Target", "Remove the target actor from this shot"));
+        inventory.setItem(19, item(Material.PAPER, "Scene Actors: " + list.size(), "Only actors included in this scene are selectable"));
+        inventory.setItem(26, item(Material.ARROW, "Back to Shot", "Return to shot configuration"));
+        player.openInventory(inventory);
+    }
+
     public void openPathEditor(Player player, String sceneName, String shotId) {
         Scene scene = scenes.get(sceneName).orElse(null);
         DirectorShot shot = scene == null ? null : director.plan(scene).get(shotId).orElse(null);
