@@ -1,7 +1,6 @@
 package com.ultraop.aurareplay.effects;
 
 import com.ultraop.aurareplay.scene.Scene;
-import com.ultraop.aurareplay.timeline.Timeline;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.Test;
 
@@ -35,7 +34,7 @@ class EffectPlaybackEngineTest {
         assertEquals(2, cursor.previousTick());
     }
 
-    private static Scene scene() { return new Scene("effects-test", new Timeline(20)); }
+    private static Scene scene() { return new Scene("effects-test"); }
 
     private static Player player() {
         return (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class}, (proxy, method, args) -> {
