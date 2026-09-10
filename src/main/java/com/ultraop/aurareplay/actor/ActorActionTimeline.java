@@ -19,8 +19,7 @@ public final class ActorActionTimeline {
                 throw new IllegalArgumentException("duplicate action event at tick " + copy.get(i).tick());
             }
         }
-        events = List.copyOf(copy);
-        this.events = events;
+        this.events = List.copyOf(copy);
     }
 
     public List<ActorActionEvent> events() { return events; }
