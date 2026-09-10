@@ -53,6 +53,8 @@ public final class DirectorExportManager {
     }
     /** Pauses an export, preserving its checkpoint and .tmp manifest for resume. */
     public boolean pause(Player v){ ExportHandle h=active.remove(v.getUniqueId()); if(h==null)return false; h.job.pause(); h.capture.pause(); if(h.task!=null)h.task.cancel(); return true; }
+    /** Pauses every active export without deleting recovery state, for clean plugin shutdown. */
+    public void pauseAll(){ for(ExportHandle h:active.values()){ h.job.pause(); h.capture.pause(); if(h.task!=null)h.task.cancel(); } active.clear(); }
     /** Cancels an export permanently and removes resumable checkpoint/temp state. */
     public boolean cancel(Player v){ ExportHandle h=active.remove(v.getUniqueId()); if(h==null)return false; h.job.cancel(); h.capture.cancel(); if(h.task!=null)h.task.cancel(); try{h.checkpoints.delete(h.checkpoint);}catch(IOException ignored){} return true; }
     public boolean active(Player v){return active.containsKey(v.getUniqueId());}
