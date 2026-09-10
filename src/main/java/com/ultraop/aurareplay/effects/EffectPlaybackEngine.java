@@ -28,40 +28,41 @@ public final class EffectPlaybackEngine {
     }
 
     /**
-     * Handles a loop seam as two half-open traversal segments. The boundary itself is
-     * emitted exactly once, and the wrapped segment starts at the loop origin.
+     * Handles a loop seam using two traversal segments. Forward playback traverses
+     * (from,end] then (start,current]; reverse traverses [end,from) then [current,end).
+     * The loop endpoint is therefore never duplicated by the wrapped segment.
      */
-    public int advanceLoop(Player viewer, Scene scene, EffectPlaybackCursor cursor, double currentTick, double boundary, boolean reverse) {
+    public int advanceLoop(Player viewer, Scene scene, EffectPlaybackCursor cursor,
+                           double currentTick, double loopStart, double loopEnd, boolean reverse) {
         Objects.requireNonNull(viewer, "viewer"); Objects.requireNonNull(scene, "scene"); Objects.requireNonNull(cursor, "cursor");
-        if (!Double.isFinite(currentTick) || !Double.isFinite(boundary)) throw new IllegalArgumentException("ticks must be finite");
+        if (!Double.isFinite(currentTick) || !Double.isFinite(loopStart) || !Double.isFinite(loopEnd))
+            throw new IllegalArgumentException("ticks must be finite");
+        if (loopEnd <= loopStart) throw new IllegalArgumentException("loopEnd must be > loopStart");
         if (!cursor.initialized()) { cursor.reset(currentTick); return 0; }
         double from = cursor.previousTick();
         int fired = 0;
         if (reverse) {
-            List<EffectCue> first = crossed(scene, cursor, from, boundary, true);
+            List<EffectCue> first = crossed(scene, cursor, from, loopStart, true);
             for (EffectCue cue : first) { EffectCuePlayer.play(viewer, cue); fired++; }
             cursor.nextLoop();
-            cursor.commit(boundary);
-            List<EffectCue> second = new ArrayList<>();
-            for (EffectCue cue : scene.effects().all()) {
-                if (cue.tick() >= currentTick && cue.tick() < boundary) second.add(cue);
-            }
-            second.sort(Comparator.comparingLong(EffectCue::tick).reversed());
+            List<EffectCue> second = crossed(scene, cursor, loopEnd, currentTick, true);
             for (EffectCue cue : second) { EffectCuePlayer.play(viewer, cue); fired++; }
         } else {
-            List<EffectCue> first = crossed(scene, cursor, from, boundary, false);
+            List<EffectCue> first = crossed(scene, cursor, from, loopEnd, false);
             for (EffectCue cue : first) { EffectCuePlayer.play(viewer, cue); fired++; }
             cursor.nextLoop();
-            cursor.commit(boundary);
-            List<EffectCue> second = new ArrayList<>();
-            for (EffectCue cue : scene.effects().all()) {
-                if (cue.tick() > boundary && cue.tick() <= currentTick) second.add(cue);
-            }
-            second.sort(Comparator.comparingLong(EffectCue::tick));
+            List<EffectCue> second = crossed(scene, cursor, loopStart, currentTick, false);
             for (EffectCue cue : second) { EffectCuePlayer.play(viewer, cue); fired++; }
         }
         cursor.commit(currentTick);
         return fired;
+    }
+
+    /** Backward-compatible overload for callers that supply only the active boundary. */
+    public int advanceLoop(Player viewer, Scene scene, EffectPlaybackCursor cursor,
+                           double currentTick, double boundary, boolean reverse) {
+        if (reverse) return advanceLoop(viewer, scene, cursor, currentTick, boundary, Double.POSITIVE_INFINITY, true);
+        return advanceLoop(viewer, scene, cursor, currentTick, Double.NEGATIVE_INFINITY, boundary, false);
     }
 
     private List<EffectCue> crossed(Scene scene, EffectPlaybackCursor cursor, double from, double to, boolean reverse) {
