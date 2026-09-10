@@ -41,6 +41,7 @@ public final class DirectorStudioListener implements Listener {
 
         State state = states.computeIfAbsent(player.getUniqueId(), ignored -> new State());
         state.sceneName = scene.name();
+        if (director.active(player) && director.currentScene(player).equals(scene.name())) state.timelineTick = Math.round(director.currentTick(player));
 
         switch (holder.mode()) {
             case DIRECTOR -> handleDirector(player, scene, state, event.getRawSlot());
@@ -63,7 +64,7 @@ public final class DirectorStudioListener implements Listener {
         if (state.selectedShotId != null) editor.select(state.selectedShotId);
         switch (slot) {
             case 18 -> state.timelineTick = Math.max(0, state.timelineTick - 20);
-            case 19 -> state.timelineTick += 20;
+            case 19 -> state.timelineTick = Math.min(Math.max(0, plan.durationTicks() - 1), state.timelineTick + 20);
             case 20 -> {
                 if (studio.addShot(scene)) {
                     state.selectedShotId = plan.shots().get(plan.shots().size() - 1).id();
@@ -78,14 +79,23 @@ public final class DirectorStudioListener implements Listener {
             case 22 -> {
                 DirectorShot selected = editor.selected();
                 if (selected != null && studio.removePathPoint(scene, selected.id(), localTick(selected, state.timelineTick))) player.sendMessage(ChatColor.YELLOW + "Path point removed.");
-                else player.sendMessage(ChatColor.GRAY + "No path point at the current tick.");
+                else player.sendMessage(ChatColor.GRAY + "No path point at the current local tick.");
             }
             case 23 -> {
+                if (director.active(player)) {
+                    if (director.playing(player)) { director.pause(player); player.sendMessage(ChatColor.YELLOW + "Director paused at tick " + Math.round(director.currentTick(player)) + "."); }
+                    else if (director.play(player)) player.sendMessage(ChatColor.GREEN + "Director playback resumed.");
+                    else player.sendMessage(ChatColor.YELLOW + "No director playback session. Move the cursor onto a shot and press Preview first.");
+                } else {
+                    if (director.start(player, scene, state.timelineTick)) player.sendMessage(ChatColor.GREEN + "Director playback started at tick " + state.timelineTick + ".");
+                    else player.sendMessage(ChatColor.YELLOW + "No active shot at tick " + state.timelineTick + ".");
+                }
+            }
+            case 24 -> {
                 if (director.renderAt(player, scene, state.timelineTick)) player.sendMessage(ChatColor.GREEN + "Director preview active at tick " + state.timelineTick + ".");
                 else player.sendMessage(ChatColor.YELLOW + "No active shot at tick " + state.timelineTick + ".");
             }
-            case 24 -> { if (editor.cycleType()) player.sendMessage(ChatColor.GREEN + "Shot type: " + editor.selected().type()); }
-            case 25 -> { if (editor.cycleTransition()) player.sendMessage(ChatColor.GREEN + "Transition: " + editor.selected().transition()); }
+            case 25 -> { director.stop(player); player.sendMessage(ChatColor.YELLOW + "Director stopped."); }
             case 26 -> { director.stop(player); states.remove(player.getUniqueId()); studio.close(player); }
             default -> { }
         }
@@ -141,10 +151,8 @@ public final class DirectorStudioListener implements Listener {
             case 19 -> state.timelineTick = Math.min(shot.endTick() - 1, state.timelineTick + 20);
             case 20 -> {
                 long tick = localTick(shot, state.timelineTick);
-                if (studio.addPathPoint(scene, shotId, tick, currentTransform(player))) {
-                    state.selectedPathTick = tick;
-                    player.sendMessage(ChatColor.GREEN + "Path point captured at local tick " + tick + ".");
-                } else player.sendMessage(ChatColor.RED + "Unable to capture path point.");
+                if (studio.addPathPoint(scene, shotId, tick, currentTransform(player))) { state.selectedPathTick = tick; player.sendMessage(ChatColor.GREEN + "Path point captured at local tick " + tick + "."); }
+                else player.sendMessage(ChatColor.RED + "Unable to capture path point.");
             }
             case 21 -> {
                 if (state.selectedPathTick < 0) player.sendMessage(ChatColor.YELLOW + "Select a path point first.");
@@ -172,11 +180,8 @@ public final class DirectorStudioListener implements Listener {
         if (state.selectedPathTick < 0) { player.sendMessage(ChatColor.YELLOW + "Select a path point first."); return; }
         long target = state.selectedPathTick + delta;
         if (target < 0 || target >= shot.durationTicks()) { player.sendMessage(ChatColor.YELLOW + "The selected point cannot move outside the shot range."); return; }
-        if (studio.movePathPoint(scene, shot.id(), state.selectedPathTick, target)) {
-            state.selectedPathTick = target;
-            state.timelineTick = shot.startTick() + target;
-            player.sendMessage(ChatColor.GREEN + "Selected point moved to local tick " + target + ".");
-        } else player.sendMessage(ChatColor.YELLOW + "Cannot move the selected point there: another point already exists at that tick.");
+        if (studio.movePathPoint(scene, shot.id(), state.selectedPathTick, target)) { state.selectedPathTick = target; state.timelineTick = shot.startTick() + target; player.sendMessage(ChatColor.GREEN + "Selected point moved to local tick " + target + "."); }
+        else player.sendMessage(ChatColor.YELLOW + "Cannot move the selected point there: another point already exists at that tick.");
     }
 
     private static CameraTransform currentTransform(Player player) { return CameraTransform.origin(player.getX(), player.getY(), player.getZ(), player.getYaw(), player.getPitch()); }
