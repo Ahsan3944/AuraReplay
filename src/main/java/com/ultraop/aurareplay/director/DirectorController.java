@@ -38,41 +38,55 @@ public final class DirectorController {
         plans.put(scene.name(), Objects.requireNonNull(plan, "plan"));
     }
 
-    public boolean start(Player viewer, Scene scene, double tick) {
-        return renderAt(viewer, scene, tick);
-    }
+    public boolean start(Player viewer, Scene scene, double tick) { return renderAt(viewer, scene, tick); }
 
-    /** Selects the active shot, evaluates its target, and applies only a viewer-local camera transform. */
+    /** Evaluates the active shot, target and shot-to-shot transition using viewer-local state. */
     public boolean renderAt(Player viewer, Scene scene, double tick) {
         Objects.requireNonNull(viewer, "viewer");
         Objects.requireNonNull(scene, "scene");
-        DirectorShot shot = plan(scene).at(tick).orElse(null);
+        DirectorPlan directorPlan = plan(scene);
+        DirectorShot shot = directorPlan.at(tick).orElse(null);
         if (shot == null) return false;
         CameraDefinition camera = cameras.get(shot.cameraId()).orElse(null);
         if (camera == null) return false;
 
         double localTick = Math.max(0.0, tick - shot.startTick());
         CameraDefinition activeCamera = cameraController.currentCamera(viewer);
-        if (activeCamera != camera) {
+        if (activeCamera == null || !activeCamera.id().equals(camera.id())) {
             cameraController.start(viewer, camera, localTick);
         } else {
             cameraController.seek(viewer, localTick);
         }
 
-        CameraTransform transform = camera.sample(localTick);
+        CameraTransform currentTransform = targetTransform(viewer, shot, camera.sample(localTick));
+        DirectorShot previous = directorPlan.previousBefore(shot.startTick()).orElse(null);
+        CameraTransform previousTransform = previous == null ? null : previousTransform(viewer, previous);
+        DirectorTransitionEvaluator.Result transition = DirectorTransitionEvaluator.evaluate(
+                shot, previous, currentTransform, previousTransform, tick);
+        return cameraController.overrideTransform(viewer, transition.transform());
+    }
+
+    private CameraTransform previousTransform(Player viewer, DirectorShot shot) {
+        CameraDefinition camera = cameras.get(shot.cameraId()).orElse(null);
+        if (camera == null) return null;
+        return targetTransform(viewer, shot, camera.sample(Math.max(0.0, shot.durationTicks() - 1.0)));
+    }
+
+    private CameraTransform targetTransform(Player viewer, DirectorShot shot, CameraTransform base) {
         ActorSample target = resolveTarget(viewer, shot);
-        if (target != null && target.exists()) {
-            double targetX = target.transform().x();
-            double targetY = target.transform().y();
-            double targetZ = target.transform().z();
-            switch (shot.type()) {
-                case FOLLOW -> transform = CameraTargetMath.follow(transform, targetX, targetY, targetZ, 
-                        targetX - camera.sample(0.0).x(), targetY - camera.sample(0.0).y(), targetZ - camera.sample(0.0).z());
-                case LOOK_AT, ORBIT -> transform = CameraTargetMath.lookAt(transform, targetX, targetY, targetZ);
-                default -> { }
+        if (target == null || !target.exists()) return base;
+        double targetX = target.transform().x();
+        double targetY = target.transform().y();
+        double targetZ = target.transform().z();
+        return switch (shot.type()) {
+            case FOLLOW -> {
+                CameraTransform origin = cameras.get(shot.cameraId()).map(c -> c.sample(0.0)).orElse(base);
+                yield CameraTargetMath.follow(base, targetX, targetY, targetZ,
+                        origin.x() - targetX, origin.y() - targetY, origin.z() - targetZ);
             }
-        }
-        return cameraController.overrideTransform(viewer, transform);
+            case LOOK_AT, ORBIT -> CameraTargetMath.lookAt(base, targetX, targetY, targetZ);
+            default -> base;
+        };
     }
 
     private ActorSample resolveTarget(Player viewer, DirectorShot shot) {
