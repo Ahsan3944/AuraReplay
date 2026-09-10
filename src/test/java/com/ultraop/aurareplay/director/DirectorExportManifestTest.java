@@ -40,7 +40,7 @@ class DirectorExportManifestTest {
     @Test
     void rejectsFrameWithWrongTimelineTick() {
         DirectorExportSpec spec = new DirectorExportSpec("scene", 10, 20, 40, 1280, 720);
-        DirectorFrame wrong = new DirectorFrame(1, 10.5,
+        DirectorFrame wrong = new DirectorFrame(1, 10.75,
                 new CameraTransform(0, 0, 0, 0, 0, 0, 70));
 
         assertThrows(IllegalArgumentException.class,
