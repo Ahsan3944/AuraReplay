@@ -21,7 +21,7 @@ class ActorActionTimelineTest {
                 new ActorActionEvent(10, ActorAction.HURT)
         ), timeline.events());
         assertEquals(2, timeline.at(10).size());
-        assertEquals(2, timeline.between(5, 10).size());
+        assertEquals(1, timeline.between(5, 10).size());
         assertTrue(timeline.between(10, 11).contains(new ActorActionEvent(10, ActorAction.HURT)));
     }
 
