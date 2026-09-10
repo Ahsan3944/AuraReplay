@@ -8,7 +8,7 @@ import org.bukkit.command.TabCompleter;
 
 import java.util.List;
 
-/** Command facade that adds durable recording and source-aware actor operations. */
+/** Command facade that adds durable recording, actor and Director Studio operations. */
 public final class PersistentAuraReplayCommand implements CommandExecutor, TabCompleter {
     private final AuraReplayCommand delegate;
     private final AuraEngine engine;
@@ -19,12 +19,15 @@ public final class PersistentAuraReplayCommand implements CommandExecutor, TabCo
     }
 
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (DirectorCommandHandler.handle(engine, sender, args)) return true;
         if (RecordingCommandHandler.handle(engine, sender, args)) return true;
         if (ActorSourceCommandHandler.handle(engine, sender, args)) return true;
         return delegate.onCommand(sender, command, label, args);
     }
 
     @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        List<String> director = DirectorCommandHandler.complete(engine, args);
+        if (!director.isEmpty()) return director;
         List<String> persistent = RecordingCommandHandler.complete(args);
         if (!persistent.isEmpty()) return persistent;
         List<String> sources = ActorSourceCommandHandler.complete(engine, args);
