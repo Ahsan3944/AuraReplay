@@ -46,7 +46,7 @@ public final class DirectorController {
     public boolean start(Player viewer, Scene scene, double tick) {
         Objects.requireNonNull(viewer, "viewer");
         Objects.requireNonNull(scene, "scene");
-        if (!Double.isFinite(tick) || tick < 0.0 || plan(scene).at(tick).isEmpty()) return false;
+        if (!DirectorPlaybackTimeline.canStart(plan(scene), tick)) return false;
         PlaybackState state = new PlaybackState(scene.name(), tick, true);
         playback.put(viewer.getUniqueId(), state);
         if (!renderAt(viewer, scene, tick)) {
@@ -75,11 +75,11 @@ public final class DirectorController {
 
     /** Seeks the active director session and immediately renders the requested tick. */
     public boolean seek(Player viewer, double tick) {
-        if (!Double.isFinite(tick) || tick < 0.0) return false;
         PlaybackState state = playback.get(viewer.getUniqueId());
         if (state == null) return false;
         Scene scene = scenes.get(state.sceneName);
-        if (scene == null || plan(scene).at(tick).isEmpty()) return false;
+        DirectorPlan directorPlan = scene == null ? null : plan(scene);
+        if (!DirectorPlaybackTimeline.canSeek(directorPlan, tick)) return false;
         if (!renderAt(viewer, scene, tick)) return false;
         state.tick = tick;
         return true;
@@ -91,20 +91,17 @@ public final class DirectorController {
         if (state == null || !state.playing) return;
         DirectorPlan directorPlan = plans.get(state.sceneName);
         Scene scene = scenes.get(state.sceneName);
-        if (directorPlan == null || scene == null) {
+        var nextTick = DirectorPlaybackTimeline.nextTick(directorPlan, state.tick);
+        if (scene == null || nextTick.isEmpty()) {
             stop(viewer);
             return;
         }
-        double nextTick = state.tick + 1.0;
-        if (nextTick >= directorPlan.durationTicks() || directorPlan.at(nextTick).isEmpty()) {
+        double tick = nextTick.getAsDouble();
+        if (!renderAt(viewer, scene, tick)) {
             stop(viewer);
             return;
         }
-        if (!renderAt(viewer, scene, nextTick)) {
-            stop(viewer);
-            return;
-        }
-        state.tick = nextTick;
+        state.tick = tick;
     }
 
     /** Evaluates the active shot, path, target and shot-to-shot transition using viewer-local state. */
