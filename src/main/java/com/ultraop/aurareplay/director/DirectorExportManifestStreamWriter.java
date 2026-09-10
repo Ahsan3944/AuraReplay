@@ -23,16 +23,13 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
     public DirectorExportManifestStreamWriter(Path output) { this.output = Objects.requireNonNull(output, "output").toAbsolutePath().normalize(); }
     public Path output() { return output; }
     public long nextFrameIndex() { return nextFrame; }
-
     @Override public void start(DirectorExportSpec spec) { open(spec, 0L, false); }
-
     /** Reopens the .tmp manifest at the exact checkpointed frame boundary. */
     public void resume(DirectorExportSpec spec, long nextFrameIndex) {
         Objects.requireNonNull(spec, "spec");
         if (nextFrameIndex < 0 || nextFrameIndex > spec.frameCount()) throw new IllegalArgumentException("nextFrameIndex must be within export frame range");
         open(spec, nextFrameIndex, true);
     }
-
     private void open(DirectorExportSpec value, long start, boolean resume) {
         if (writer != null || finished) throw new IllegalStateException("writer is not ready");
         spec = Objects.requireNonNull(value, "spec");
@@ -44,12 +41,10 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
             nextFrame = start;
         } catch (IOException ex) { cleanupTemp(); throw new IllegalStateException("failed to open export manifest", ex); }
     }
-
     private void writeHeader() throws IOException {
         writer.write("{\n"); field("scene", spec.sceneName(), true); field("startTick", spec.startTick(), true); field("endTick", spec.endTick(), true);
         field("fps", spec.fps(), true); field("width", spec.width(), true); field("height", spec.height(), true); field("frameCount", spec.frameCount(), true); writer.write("  \"frames\": [\n");
     }
-
     @Override public void accept(DirectorFrame frame) {
         Objects.requireNonNull(frame, "frame");
         if (writer == null || spec == null) throw new IllegalStateException("writer is not running");
@@ -59,7 +54,6 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
         try { if (nextFrame > 0) writer.write(",\n"); writeFrame(frame); writer.flush(); nextFrame++; }
         catch (IOException ex) { throw new IllegalStateException("failed to write export frame " + nextFrame, ex); }
     }
-
     @Override public void complete() {
         if (finished) return;
         if (writer == null || spec == null) throw new IllegalStateException("writer is not running");
@@ -67,7 +61,6 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
         try { writer.write("\n  ]\n}\n"); writer.close(); writer = null; moveIntoPlace(); finished = true; }
         catch (IOException ex) { cleanupTemp(); throw new IllegalStateException("failed to finalize export manifest", ex); }
     }
-
     /** Closes the stream but deliberately preserves the .tmp manifest for resume. */
     @Override public void pause() {
         if (writer == null || finished) return;
@@ -75,10 +68,8 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
         catch (IOException ex) { throw new IllegalStateException("failed to pause export manifest", ex); }
         finally { writer = null; }
     }
-
     @Override public void cancel() { closeAndDelete(); }
     @Override public void fail(Throwable error) { closeAndDelete(); }
-
     private void writeFrame(DirectorFrame frame) throws IOException {
         CameraTransform c = frame.camera(); writer.write("    {\n"); field("index", frame.frameIndex(), true, 6); field("tick", frame.sceneTick(), true, 6); writer.write("      \"camera\": {\n");
         field("x", c.x(), true, 8); field("y", c.y(), true, 8); field("z", c.z(), true, 8); field("yaw", c.yaw(), true, 8); field("pitch", c.pitch(), true, 8); field("roll", c.roll(), true, 8); field("fov", c.fov(), false, 8); writer.write("      }\n"); writer.write("    }");
@@ -87,16 +78,35 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
     private void field(String n, long v, boolean comma) throws IOException { writer.write("  \""); writer.write(n); writer.write("\": "); writer.write(Long.toString(v)); if (comma) writer.write(','); writer.write('\n'); }
     private void field(String n, double v, boolean comma, int indent) throws IOException { writer.write(" ".repeat(indent)); writer.write("\""); writer.write(n); writer.write("\": "); writer.write(number(v)); if (comma) writer.write(','); writer.write('\n'); }
 
-    /** Finds the checkpoint frame and truncates the temp file before its separator. */
+    /** Finds the checkpoint frame object and truncates immediately before its leading comma. */
     private static void truncateToFrame(Path temp, long next) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(temp.toFile(), "rw")) {
-            if (next == 0) { String line; while ((line = raf.readLine()) != null) if (line.contains("\"frames\": [")) { raf.setLength(raf.getFilePointer()); return; } throw new IllegalArgumentException("temporary manifest has invalid header"); }
-            String line;
-            while (true) {
-                long start = raf.getFilePointer(); line = raf.readLine(); if (line == null) break;
-                if (line.contains("\"index\": " + next + ",")) { raf.setLength(Math.max(0L, start - 2L)); return; }
+            if (next == 0) {
+                String line;
+                while ((line = raf.readLine()) != null) if (line.contains("\"frames\": [")) { raf.setLength(raf.getFilePointer()); return; }
+                throw new IllegalArgumentException("temporary manifest has invalid header");
             }
-            throw new IllegalArgumentException("temporary manifest does not contain checkpoint frame " + next);
+            String line;
+            long frameStart = -1L;
+            while (true) {
+                long lineStart = raf.getFilePointer();
+                line = raf.readLine();
+                if (line == null) break;
+                if (line.contains("\"index\": " + next + ",")) {
+                    frameStart = lineStart;
+                    break;
+                }
+            }
+            if (frameStart < 0) throw new IllegalArgumentException("temporary manifest does not contain checkpoint frame " + next);
+            raf.seek(frameStart);
+            while (frameStart > 0) {
+                raf.seek(frameStart - 1);
+                int b = raf.read();
+                if (b == '\n' || b == '\r') { frameStart--; continue; }
+                if (b == '{') { raf.setLength(frameStart - 4L); return; }
+                frameStart--;
+            }
+            throw new IllegalArgumentException("temporary manifest has invalid checkpoint frame boundary");
         }
     }
     private Path tempPath() { return output.resolveSibling(output.getFileName() + ".tmp"); }
