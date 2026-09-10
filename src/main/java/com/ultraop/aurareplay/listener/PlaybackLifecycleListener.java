@@ -17,6 +17,7 @@ public final class PlaybackLifecycleListener implements Listener {
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
+        engine.directorRealtimeRenderManager().stop(event.getPlayer());
         engine.actorPlaybackController().stopAll(event.getPlayer());
         engine.cameraController().stop(event.getPlayer());
         engine.studioController().close(event.getPlayer());
