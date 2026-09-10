@@ -124,6 +124,14 @@ public final class DirectorController {
         return cameraController.overrideTransform(viewer, transition.transform());
     }
 
+    /** Renders and returns the exact viewer-local transform that Director would present at a scene tick. */
+    public CameraTransform sample(Player viewer, Scene scene, double tick) {
+        Objects.requireNonNull(viewer, "viewer");
+        Objects.requireNonNull(scene, "scene");
+        if (!renderAt(viewer, scene, tick)) return null;
+        return cameraController.currentTransform(viewer);
+    }
+
     private CameraTransform previousTransform(Player viewer, DirectorShot shot) {
         CameraDefinition camera = cameras.get(shot.cameraId()).orElse(null);
         if (camera == null) return null;
