@@ -1,5 +1,6 @@
 package com.ultraop.aurareplay.scene;
 
+import com.ultraop.aurareplay.effects.EffectPlaybackCursor;
 import com.ultraop.aurareplay.timeline.TimelineCursor;
 
 import java.util.Objects;
@@ -8,27 +9,24 @@ import java.util.Objects;
 public final class ScenePlaybackSession {
     private final Scene scene;
     private final TimelineCursor cursor = new TimelineCursor();
+    private final EffectPlaybackCursor effectCursor = new EffectPlaybackCursor();
     private boolean finished;
     private boolean paused;
 
     public ScenePlaybackSession(Scene scene) {
         this.scene = Objects.requireNonNull(scene, "scene");
         cursor.reset(scene.timeline());
+        effectCursor.reset(cursor.tick());
     }
 
     public Scene scene() { return scene; }
     public TimelineCursor cursor() { return cursor; }
+    public EffectPlaybackCursor effectCursor() { return effectCursor; }
     public boolean finished() { return finished; }
     public boolean paused() { return paused; }
-
-    public void setPaused(boolean paused) {
-        if (!finished) this.paused = paused;
-    }
-
-    public void seek(double tick) {
-        cursor.setTick(tick, scene.timeline());
-        finished = false;
-    }
+    public void setPaused(boolean paused) { if (!finished) this.paused = paused; }
+    public void seek(double tick) { cursor.setTick(tick, scene.timeline()); effectCursor.seek(cursor.tick()); finished = false; }
+    public void resetEffectsAtCurrentTick() { effectCursor.reset(cursor.tick()); }
 
     /** Advances scene time by one server tick and reports whether playback remains active. */
     public boolean tick() {
