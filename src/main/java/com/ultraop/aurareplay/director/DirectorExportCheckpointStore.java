@@ -28,8 +28,14 @@ public final class DirectorExportCheckpointStore {
     }
 
     public DirectorExportCheckpoint load(Path checkpoint, DirectorExportSpec expected) throws IOException {
+        DirectorExportCheckpoint actual = loadMetadata(checkpoint);
+        if (!actual.spec().equals(expected)) throw new IllegalArgumentException("checkpoint does not match export spec");
+        return new DirectorExportCheckpoint(expected, actual.nextFrameIndex());
+    }
+
+    /** Reads and validates the checkpoint itself without requiring a caller-supplied spec. */
+    public DirectorExportCheckpoint loadMetadata(Path checkpoint) throws IOException {
         Objects.requireNonNull(checkpoint, "checkpoint");
-        Objects.requireNonNull(expected, "expected");
         String json = Files.readString(checkpoint.toAbsolutePath().normalize(), StandardCharsets.UTF_8);
         String scene = stringField(json, "scene");
         long start = longField(json, "startTick");
@@ -38,9 +44,8 @@ public final class DirectorExportCheckpointStore {
         int width = Math.toIntExact(longField(json, "width"));
         int height = Math.toIntExact(longField(json, "height"));
         long next = longField(json, "nextFrameIndex");
-        DirectorExportSpec actual = new DirectorExportSpec(scene, start, end, fps, width, height);
-        if (!actual.equals(expected)) throw new IllegalArgumentException("checkpoint does not match export spec");
-        return new DirectorExportCheckpoint(expected, next);
+        DirectorExportSpec spec = new DirectorExportSpec(scene, start, end, fps, width, height);
+        return new DirectorExportCheckpoint(spec, next);
     }
 
     public void delete(Path checkpoint) throws IOException {
@@ -65,7 +70,6 @@ public final class DirectorExportCheckpointStore {
         int start = json.indexOf(marker);
         if (start < 0) throw new IllegalArgumentException("missing checkpoint field: " + name);
         start += marker.length();
-
         StringBuilder value = new StringBuilder();
         boolean escaped = false;
         for (int i = start; i < json.length(); i++) {
@@ -80,13 +84,9 @@ public final class DirectorExportCheckpointStore {
                     default -> throw new IllegalArgumentException("invalid checkpoint escape character: " + c);
                 }
                 escaped = false;
-            } else if (c == '\\') {
-                escaped = true;
-            } else if (c == '"') {
-                return value.toString();
-            } else {
-                value.append(c);
-            }
+            } else if (c == '\\') escaped = true;
+            else if (c == '"') return value.toString();
+            else value.append(c);
         }
         throw new IllegalArgumentException("invalid checkpoint field: " + name);
     }
