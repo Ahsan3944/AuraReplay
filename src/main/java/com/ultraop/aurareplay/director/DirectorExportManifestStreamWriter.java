@@ -82,30 +82,29 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
     private void field(String n, long v, boolean comma) throws IOException { writer.write("  \""); writer.write(n); writer.write("\": "); writer.write(Long.toString(v)); if (comma) writer.write(','); writer.write('\n'); }
     private void field(String n, double v, boolean comma, int indent) throws IOException { writer.write(" ".repeat(indent)); writer.write("\""); writer.write(n); writer.write("\": "); writer.write(number(v)); if (comma) writer.write(','); writer.write('\n'); }
 
-    /** Validates the paused manifest header and completed frame sequence before resuming. */
+    /** Validates a recoverable temporary manifest against its checkpoint state. */
+    public static void validateCheckpoint(Path temp, DirectorExportSpec expected, long next) throws IOException {
+        Objects.requireNonNull(temp, "temp"); Objects.requireNonNull(expected, "expected");
+        validateTempCheckpoint(temp.toAbsolutePath().normalize(), expected, next);
+    }
+
     private static void validateTempCheckpoint(Path temp, DirectorExportSpec expected, long next) throws IOException {
         String json = Files.readString(temp, StandardCharsets.UTF_8);
-        try {
-            if (!expected.sceneName().equals(stringField(json, "scene"))
-                    || expected.startTick() != longField(json, "startTick")
-                    || expected.endTick() != longField(json, "endTick")
-                    || expected.fps() != longField(json, "fps")
-                    || expected.width() != longField(json, "width")
-                    || expected.height() != longField(json, "height")
-                    || expected.frameCount() != longField(json, "frameCount")) {
-                throw new IllegalArgumentException("temporary manifest does not match export spec");
-            }
-        } catch (IllegalArgumentException ex) {
-            throw ex;
-        }
+        if (!expected.sceneName().equals(stringField(json, "scene"))
+                || expected.startTick() != longField(json, "startTick")
+                || expected.endTick() != longField(json, "endTick")
+                || expected.fps() != longField(json, "fps")
+                || expected.width() != longField(json, "width")
+                || expected.height() != longField(json, "height")
+                || expected.frameCount() != longField(json, "frameCount"))
+            throw new IllegalArgumentException("temporary manifest does not match export spec");
         long found = 0L;
         int cursor = json.indexOf("\"frames\": [");
         if (cursor < 0) throw new IllegalArgumentException("temporary manifest has invalid frame section");
         while (found < next) {
             int marker = json.indexOf("\"index\": " + found + ",", cursor);
             if (marker < 0) throw new IllegalArgumentException("temporary manifest is missing completed frame " + found);
-            cursor = marker + 1;
-            found++;
+            cursor = marker + 1; found++;
         }
         if (json.indexOf("\"index\": " + next + ",", cursor) >= 0) throw new IllegalArgumentException("temporary manifest contains uncheckpointed frame " + next);
     }
@@ -127,7 +126,6 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
         return Long.parseLong(json.substring(start, end));
     }
 
-    /** Truncates a paused manifest after the last completed frame represented by next. */
     private static void truncateToFrame(Path temp, long next) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(temp.toFile(), "rw")) {
             if (next == 0) { String line; while ((line = raf.readLine()) != null) if (line.contains("\"frames\": [")) { raf.setLength(raf.getFilePointer()); return; } throw new IllegalArgumentException("temporary manifest has invalid header"); }
