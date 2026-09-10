@@ -56,6 +56,8 @@ public final class DirectorStudioService {
         return inventory != null && inventory.getHolder() instanceof Holder;
     }
 
+    public void close(Player player) { player.closeInventory(); }
+
     public boolean addShot(Scene scene) {
         List<CameraDefinition> list = cameras.all().stream().sorted(Comparator.comparing(CameraDefinition::id)).toList();
         if (list.isEmpty()) return false;
