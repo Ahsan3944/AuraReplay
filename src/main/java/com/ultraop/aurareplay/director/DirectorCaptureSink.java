@@ -8,6 +8,9 @@ public interface DirectorCaptureSink {
 
     void complete();
 
+    /** Pauses capture while preserving resumable output state. */
+    default void pause() { }
+
     default void cancel() { }
 
     default void fail(Throwable error) { }
