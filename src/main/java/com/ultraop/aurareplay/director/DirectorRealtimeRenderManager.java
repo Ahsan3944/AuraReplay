@@ -13,6 +13,7 @@ import java.util.function.Function;
 /** Manages viewer-local realtime Director render sessions on the server tick thread. */
 public final class DirectorRealtimeRenderManager {
     private final Map<UUID, DirectorRealtimeRenderSession> sessions = new ConcurrentHashMap<>();
+    private final Map<UUID, Throwable> failures = new ConcurrentHashMap<>();
 
     public boolean start(Player viewer,
                          DirectorExportSpec spec,
@@ -24,6 +25,7 @@ public final class DirectorRealtimeRenderManager {
         Objects.requireNonNull(sampler, "sampler");
         UUID id = viewer.getUniqueId();
         if (sessions.containsKey(id)) return false;
+        failures.remove(id);
         sessions.put(id, new DirectorRealtimeRenderSession(spec, bridge, viewer, sampler));
         return true;
     }
@@ -33,8 +35,12 @@ public final class DirectorRealtimeRenderManager {
         if (session == null) return false;
         session.tick();
         if (session.state() == DirectorRealtimeRenderSession.State.COMPLETED
-                || session.state() == DirectorRealtimeRenderSession.State.STOPPED) {
+                || session.state() == DirectorRealtimeRenderSession.State.STOPPED
+                || session.state() == DirectorRealtimeRenderSession.State.FAILED) {
             sessions.remove(viewer.getUniqueId(), session);
+            if (session.state() == DirectorRealtimeRenderSession.State.FAILED) {
+                failures.put(viewer.getUniqueId(), session.failure());
+            }
         }
         return true;
     }
@@ -59,6 +65,14 @@ public final class DirectorRealtimeRenderManager {
         return session == null ? null : session.state();
     }
 
+    public Throwable failure(Player viewer) {
+        return failures.get(viewer.getUniqueId());
+    }
+
+    public Throwable consumeFailure(Player viewer) {
+        return failures.remove(viewer.getUniqueId());
+    }
+
     public long emittedFrames(Player viewer) {
         DirectorRealtimeRenderSession session = sessions.get(viewer.getUniqueId());
         return session == null ? 0L : session.emittedFrames();
@@ -76,5 +90,8 @@ public final class DirectorRealtimeRenderManager {
 
     public int sessionCount() { return sessions.size(); }
 
-    public void clear() { sessions.clear(); }
+    public void clear() {
+        sessions.clear();
+        failures.clear();
+    }
 }
