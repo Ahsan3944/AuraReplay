@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class DirectorExportJobCaptureTest {
     @Test
     void forwardsExactSampledFramesIncludingNonZeroStartTick() {
-        DirectorExportSpec spec = new DirectorExportSpec("scene", 10, 12, 40, 1280, 720);
+        DirectorExportSpec spec = new DirectorExportSpec("scene", 10, 11, 40, 1280, 720);
         List<DirectorFrame> captured = new ArrayList<>();
         DirectorExportJob job = new DirectorExportJob(
                 spec,
