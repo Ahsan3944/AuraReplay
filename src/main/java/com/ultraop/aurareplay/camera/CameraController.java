@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class CameraController {
     private final CameraBackend backend;
     private final Map<UUID, CameraPlaybackSession> sessions = new ConcurrentHashMap<>();
+    private final Map<UUID, CameraTransform> transforms = new ConcurrentHashMap<>();
 
     public CameraController(CameraBackend backend) { this.backend = backend; }
 
@@ -22,14 +23,14 @@ public final class CameraController {
         session.setTick(startTick);
         sessions.put(viewer.getUniqueId(), session);
         backend.activate(viewer, camera);
-        backend.update(viewer, session.sample());
+        update(viewer, session.sample());
     }
 
     public boolean seek(Player viewer, double tick) {
         CameraPlaybackSession session = sessions.get(viewer.getUniqueId());
         if (session == null || !session.active()) return false;
         session.setTick(tick);
-        backend.update(viewer, session.sample());
+        update(viewer, session.sample());
         return true;
     }
 
@@ -37,8 +38,18 @@ public final class CameraController {
     public boolean overrideTransform(Player viewer, CameraTransform transform) {
         CameraPlaybackSession session = sessions.get(viewer.getUniqueId());
         if (session == null || !session.active()) return false;
-        backend.update(viewer, transform);
+        update(viewer, transform);
         return true;
+    }
+
+    private void update(Player viewer, CameraTransform transform) {
+        transforms.put(viewer.getUniqueId(), transform);
+        backend.update(viewer, transform);
+    }
+
+    /** Returns the last transform applied to the viewer-local camera. */
+    public CameraTransform currentTransform(Player viewer) {
+        return transforms.get(viewer.getUniqueId());
     }
 
     /** Returns the active camera definition for the viewer, if any. */
@@ -61,16 +72,17 @@ public final class CameraController {
         CameraPlaybackSession session = sessions.get(viewer.getUniqueId());
         if (session == null || !session.active()) return;
         session.advance(1.0);
-        backend.update(viewer, session.sample());
+        update(viewer, session.sample());
     }
 
     public void stop(Player viewer) {
         CameraPlaybackSession session = sessions.remove(viewer.getUniqueId());
+        transforms.remove(viewer.getUniqueId());
         if (session != null) session.stop();
         backend.deactivate(viewer);
     }
 
     public void stopAll(Iterable<? extends Player> viewers) { viewers.forEach(this::stop); }
     public int sessionCount() { return sessions.size(); }
-    public void clear() { sessions.clear(); }
+    public void clear() { sessions.clear(); transforms.clear(); }
 }
