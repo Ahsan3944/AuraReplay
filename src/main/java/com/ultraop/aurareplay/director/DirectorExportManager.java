@@ -74,17 +74,23 @@ public final class DirectorExportManager {
             active.remove(id, handle);
 
             if (job.state() == DirectorExportJob.State.COMPLETED) {
-                DirectorExportManifest manifest = new DirectorExportManifest(spec, job.frames());
-                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                    try {
-                        Path written = writer.write(output, manifest);
-                        Bukkit.getScheduler().runTask(plugin, () -> onComplete.accept(written));
-                    } catch (Throwable ex) {
-                        Bukkit.getScheduler().runTask(plugin, () -> onFailure.accept(ex));
-                    }
-                });
+                try {
+                    DirectorExportManifest manifest = new DirectorExportManifest(spec, job.frames());
+                    Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                        try {
+                            Path written = writer.write(output, manifest);
+                            Bukkit.getScheduler().runTask(plugin, () -> onComplete.accept(written));
+                        } catch (Throwable ex) {
+                            Bukkit.getScheduler().runTask(plugin, () -> onFailure.accept(ex));
+                        }
+                    });
+                } catch (Throwable ex) {
+                    onFailure.accept(ex);
+                }
             } else if (job.state() == DirectorExportJob.State.FAILED) {
-                onFailure.accept(job.failure());
+                Throwable failure = job.failure();
+                if (handle.capture != null) handle.capture.fail(failure);
+                onFailure.accept(failure);
             }
         }, 1L, 1L);
         return true;
