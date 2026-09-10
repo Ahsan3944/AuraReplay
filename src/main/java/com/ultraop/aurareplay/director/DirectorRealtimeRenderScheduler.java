@@ -1,7 +1,5 @@
 package com.ultraop.aurareplay.director;
 
-import java.util.Objects;
-
 /** Pure timing helper for mapping Minecraft ticks to deterministic export frames. */
 public final class DirectorRealtimeRenderScheduler {
     private final int fps;
@@ -17,13 +15,17 @@ public final class DirectorRealtimeRenderScheduler {
     public long emittedFrames() { return emittedFrames; }
     public long elapsedTicks() { return elapsedTicks; }
 
-    /** Advances one server tick and returns the number of newly due frames. */
+    /** Advances one server tick and returns the number of frames that are now due. */
     public int advance() {
         elapsedTicks++;
         long due = (long) Math.floor(elapsedTicks * (double) fps / 20.0 + 1e-12);
-        int count = (int) Math.max(0L, due - emittedFrames);
+        return (int) Math.max(0L, due - emittedFrames);
+    }
+
+    /** Marks successfully rendered frames so a failed bridge never consumes them. */
+    public void markEmitted(int count) {
+        if (count < 0) throw new IllegalArgumentException("count must be >= 0");
         emittedFrames += count;
-        return count;
     }
 
     public void reset() {
