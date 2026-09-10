@@ -9,10 +9,7 @@ public interface VirtualActorBackend {
 
     void update(ActorDefinition actor, Player viewer, ActorTransform transform);
 
-    /**
-     * Render a complete sampled actor state. Keeping the sample here prevents the
-     * renderer from having to know about playback cursors or recording internals.
-     */
+    /** Render a complete sampled actor state without advancing playback. */
     default void update(ActorDefinition actor, Player viewer, ActorSample sample) {
         update(actor, viewer, sample.transform());
         updateEquipment(actor, viewer, sample.source());
