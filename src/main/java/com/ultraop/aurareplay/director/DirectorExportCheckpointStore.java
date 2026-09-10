@@ -94,15 +94,14 @@ public final class DirectorExportCheckpointStore {
     private static long longField(String json, String name) {
         String marker = "\"" + name + "\":";
         int start = json.indexOf(marker);
-        if (start < 0) {
-            marker = "\"" + name + "\": ";
-            start = json.indexOf(marker);
-        }
         if (start < 0) throw new IllegalArgumentException("missing checkpoint field: " + name);
         start += marker.length();
+        while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
         int end = start;
-        while (end < json.length() && "0123456789-".indexOf(json.charAt(end)) >= 0) end++;
-        if (end == start) throw new IllegalArgumentException("invalid checkpoint field: " + name);
+        if (end < json.length() && json.charAt(end) == '-') end++;
+        int digits = end;
+        while (end < json.length() && Character.isDigit(json.charAt(end))) end++;
+        if (end == digits) throw new IllegalArgumentException("invalid checkpoint field: " + name);
         return Long.parseLong(json.substring(start, end));
     }
 
