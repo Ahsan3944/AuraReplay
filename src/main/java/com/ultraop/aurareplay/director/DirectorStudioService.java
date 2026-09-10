@@ -1,5 +1,6 @@
 package com.ultraop.aurareplay.director;
 
+import com.ultraop.aurareplay.actor.ActorDefinition;
 import com.ultraop.aurareplay.camera.CameraDefinition;
 import com.ultraop.aurareplay.camera.CameraManager;
 import com.ultraop.aurareplay.camera.CameraTransform;
@@ -17,7 +18,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
-/** In-game Studio editor for director shots and camera paths. */
+/** In-game Studio editor for director shots, cameras, targets and camera paths. */
 public final class DirectorStudioService {
     private final SceneManager scenes;
     private final CameraManager cameras;
@@ -40,22 +41,22 @@ public final class DirectorStudioService {
             inventory.setItem(i, item(Material.SPYGLASS, shot.id(),
                     "Range: " + shot.startTick() + " - " + shot.endTick(),
                     "Type: " + shot.type(), "Transition: " + shot.transition(),
-                    "Camera: " + shot.cameraId(), "Path points: " + shot.path().points().size()));
+                    "Camera: " + shot.cameraId(), "Target: " + displayTarget(shot),
+                    "Path points: " + shot.path().points().size()));
         }
-        inventory.setItem(20, item(Material.CLOCK, "Add Shot", "Creates a 40-tick shot using the first camera"));
-        inventory.setItem(21, item(Material.BRUSH, "Add Path Point", "Adds a point at the current preview position"));
-        inventory.setItem(22, item(Material.REDSTONE, "Remove Path Point", "Removes the current path point"));
-        inventory.setItem(23, item(Material.ENDER_EYE, "Preview Director", "Preview the current scene director"));
+        inventory.setItem(18, item(Material.ARROW, "Timeline -20", "Move director cursor back 20 ticks"));
+        inventory.setItem(19, item(Material.ARROW, "Timeline +20", "Move director cursor forward 20 ticks"));
+        inventory.setItem(20, item(Material.CLOCK, "Add Shot", "Create a new 40-tick shot"));
+        inventory.setItem(21, item(Material.BRUSH, "Add Path Point", "Capture your current position and rotation"));
+        inventory.setItem(22, item(Material.REDSTONE, "Remove Path Point", "Remove the point at the current local tick"));
+        inventory.setItem(23, item(Material.ENDER_EYE, "Preview Director", "Preview the current director cursor"));
         inventory.setItem(24, item(Material.REPEATER, "Next Shot Type", "Cycle STATIC/FOLLOW/LOOK_AT/ORBIT/DOLLY/RAIL/SPLINE"));
         inventory.setItem(25, item(Material.LEVER, "Next Transition", "Cycle CUT/BLEND/FADE"));
-        inventory.setItem(26, item(Material.ARROW, "Back"));
+        inventory.setItem(26, item(Material.ARROW, "Close Director"));
         player.openInventory(inventory);
     }
 
-    public boolean isInventory(Inventory inventory) {
-        return inventory != null && inventory.getHolder() instanceof Holder;
-    }
-
+    public boolean isInventory(Inventory inventory) { return inventory != null && inventory.getHolder() instanceof Holder; }
     public void close(Player player) { player.closeInventory(); }
 
     public boolean addShot(Scene scene) {
@@ -81,6 +82,42 @@ public final class DirectorStudioService {
         return shot != null && shot.path().removePoint(tick);
     }
 
+    public boolean setCamera(Scene scene, String shotId, String cameraId) {
+        DirectorShot shot = director.plan(scene).get(shotId).orElse(null);
+        if (shot == null || cameras.get(cameraId).isEmpty()) return false;
+        return replace(director.plan(scene), shot, new DirectorShot(shot.id(), shot.startTick(), shot.endTick(), cameraId, shot.targetActorId(), shot.type(), shot.transition(), shot.path()));
+    }
+
+    public boolean clearTarget(Scene scene, String shotId) {
+        return setTarget(scene, shotId, null);
+    }
+
+    public boolean setTarget(Scene scene, String shotId, String actorId) {
+        DirectorShot shot = director.plan(scene).get(shotId).orElse(null);
+        if (shot == null) return false;
+        if (actorId != null) {
+            try { if (directorActor(scene, actorId) == null) return false; }
+            catch (IllegalArgumentException ignored) { return false; }
+        }
+        return replace(director.plan(scene), shot, new DirectorShot(shot.id(), shot.startTick(), shot.endTick(), shot.cameraId(), actorId, shot.type(), shot.transition(), shot.path()));
+    }
+
+    public List<CameraDefinition> cameras() { return cameras.all().stream().sorted(Comparator.comparing(CameraDefinition::id)).toList(); }
+    public List<ActorDefinition> actors(Scene scene) { return scene.actorIds().stream().map(id -> findActor(id)).filter(Objects::nonNull).sorted(Comparator.comparing(a -> a.id().toString())).toList(); }
+
+    private ActorDefinition findActor(java.util.UUID id) { return null; }
+    private ActorDefinition directorActor(Scene scene, String actorId) {
+        java.util.UUID uuid = java.util.UUID.fromString(actorId);
+        return scene.actorIds().contains(new com.ultraop.aurareplay.actor.ActorId(uuid)) ? new ActorDefinition(new com.ultraop.aurareplay.actor.ActorId(uuid), "actor") : null;
+    }
+
+    private static boolean replace(DirectorPlan plan, DirectorShot oldShot, DirectorShot replacement) {
+        plan.remove(oldShot.id());
+        try { plan.add(replacement); return true; } catch (RuntimeException ex) { plan.add(oldShot); return false; }
+    }
+
+    private static String displayTarget(DirectorShot shot) { return shot.targetActorId() == null ? "none" : shot.targetActorId(); }
+
     private static ItemStack item(Material material, String name, String... lore) {
         ItemStack stack = new ItemStack(material);
         ItemMeta meta = stack.getItemMeta();
@@ -90,7 +127,5 @@ public final class DirectorStudioService {
         return stack;
     }
 
-    public static final class Holder implements org.bukkit.inventory.InventoryHolder {
-        @Override public Inventory getInventory() { return null; }
-    }
+    public static final class Holder implements org.bukkit.inventory.InventoryHolder { @Override public Inventory getInventory() { return null; } }
 }
