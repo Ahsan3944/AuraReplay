@@ -54,8 +54,8 @@ public final class DirectorExportJob {
         try {
             while (captured < maxFrames && nextFrame < spec.frameCount()) {
                 DirectorFrame frame = DirectorExportPlanner.sample(spec, nextFrame, sampler);
-                if (frameConsumer != null) frameConsumer.accept(frame);
                 frames.add(frame);
+                if (frameConsumer != null) frameConsumer.accept(frame);
                 nextFrame++;
                 captured++;
             }
@@ -68,9 +68,7 @@ public final class DirectorExportJob {
         }
     }
 
-    public List<DirectorFrame> frames() {
-        return List.copyOf(frames);
-    }
+    public List<DirectorFrame> frames() { return List.copyOf(frames); }
 
     public void cancel() {
         if (state == State.READY || state == State.RUNNING) state = State.CANCELLED;
