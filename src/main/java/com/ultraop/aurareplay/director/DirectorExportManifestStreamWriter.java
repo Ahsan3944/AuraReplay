@@ -67,6 +67,15 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
         try { writer.write("\n  ]\n}\n"); writer.close(); writer = null; moveIntoPlace(); finished = true; }
         catch (IOException ex) { cleanupTemp(); throw new IllegalStateException("failed to finalize export manifest", ex); }
     }
+
+    /** Closes the stream but deliberately preserves the .tmp manifest for resume. */
+    @Override public void pause() {
+        if (writer == null || finished) return;
+        try { writer.flush(); writer.close(); }
+        catch (IOException ex) { throw new IllegalStateException("failed to pause export manifest", ex); }
+        finally { writer = null; }
+    }
+
     @Override public void cancel() { closeAndDelete(); }
     @Override public void fail(Throwable error) { closeAndDelete(); }
 
