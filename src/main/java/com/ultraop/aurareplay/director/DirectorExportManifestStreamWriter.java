@@ -9,6 +9,7 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -36,7 +37,7 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
             Path parent = output.getParent(); if (parent != null) Files.createDirectories(parent);
             Path temp = tempPath();
             if (!resume) { Files.deleteIfExists(temp); writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8); writeHeader(); }
-            else { if (!Files.exists(temp)) throw new IllegalStateException("export checkpoint has no temporary manifest"); truncateToFrame(temp, start); writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND); }
+            else { if (!Files.exists(temp)) throw new IllegalStateException("export checkpoint has no temporary manifest"); truncateToFrame(temp, start); writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8, StandardOpenOption.APPEND); }
             nextFrame = start;
         } catch (IOException ex) { cleanupTemp(); throw new IllegalStateException("failed to open export manifest", ex); }
     }
@@ -76,7 +77,7 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
     private void field(String n, long v, boolean comma) throws IOException { writer.write("  \""); writer.write(n); writer.write("\": "); writer.write(Long.toString(v)); if (comma) writer.write(','); writer.write('\n'); }
     private void field(String n, double v, boolean comma, int indent) throws IOException { writer.write(" ".repeat(indent)); writer.write("\""); writer.write(n); writer.write("\": "); writer.write(number(v)); if (comma) writer.write(','); writer.write('\n'); }
 
-    /** Finds the checkpoint frame object and truncates before its leading comma. */
+    /** Truncates a paused manifest after the last completed frame represented by next. */
     private static void truncateToFrame(Path temp, long next) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(temp.toFile(), "rw")) {
             if (next == 0) {
@@ -84,30 +85,50 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
                 while ((line = raf.readLine()) != null) if (line.contains("\"frames\": [")) { raf.setLength(raf.getFilePointer()); return; }
                 throw new IllegalArgumentException("temporary manifest has invalid header");
             }
+
+            long target = next - 1;
+            raf.seek(0L);
             String line;
-            long indexLineStart = -1L;
+            long targetIndexLineStart = -1L;
             while (true) {
                 long lineStart = raf.getFilePointer();
                 line = raf.readLine();
                 if (line == null) break;
-                if (line.contains("\"index\": " + next + ",")) { indexLineStart = lineStart; break; }
+                if (line.contains("\"index\": " + target + ",")) { targetIndexLineStart = lineStart; break; }
             }
-            if (indexLineStart < 0) throw new IllegalArgumentException("temporary manifest does not contain checkpoint frame " + next);
-            long frameStart = indexLineStart;
+            if (targetIndexLineStart < 0) throw new IllegalArgumentException("temporary manifest does not contain completed checkpoint frame " + target);
+
+            long frameStart = targetIndexLineStart;
             while (frameStart > 0) {
                 raf.seek(frameStart - 1);
                 if (raf.read() == '{') break;
                 frameStart--;
             }
             if (frameStart <= 0) throw new IllegalArgumentException("temporary manifest has invalid checkpoint frame boundary");
-            long comma = frameStart - 1;
-            while (comma >= 0) {
-                raf.seek(comma);
+
+            long frameEnd = frameStart;
+            raf.seek(frameStart);
+            boolean inString = false;
+            boolean escaped = false;
+            int depth = 0;
+            while (true) {
                 int b = raf.read();
-                if (b == ',') { raf.setLength(comma); return; }
-                comma--;
+                if (b < 0) throw new IllegalArgumentException("temporary manifest has incomplete checkpoint frame");
+                char c = (char) b;
+                if (inString) {
+                    if (escaped) escaped = false;
+                    else if (c == '\\') escaped = true;
+                    else if (c == '"') inString = false;
+                    continue;
+                }
+                if (c == '"') { inString = true; continue; }
+                if (c == '{') depth++;
+                else if (c == '}') {
+                    depth--;
+                    if (depth == 0) { frameEnd = raf.getFilePointer(); break; }
+                }
             }
-            throw new IllegalArgumentException("temporary manifest has no frame separator before checkpoint");
+            raf.setLength(frameEnd);
         }
     }
     private Path tempPath() { return output.resolveSibling(output.getFileName() + ".tmp"); }
