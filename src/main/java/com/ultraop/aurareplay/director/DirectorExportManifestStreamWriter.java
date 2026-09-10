@@ -37,7 +37,12 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
             Path parent = output.getParent(); if (parent != null) Files.createDirectories(parent);
             Path temp = tempPath();
             if (!resume) { Files.deleteIfExists(temp); writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8); writeHeader(); }
-            else { if (!Files.exists(temp)) throw new IllegalStateException("export checkpoint has no temporary manifest"); truncateToFrame(temp, start); writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8, StandardOpenOption.APPEND); }
+            else {
+                if (!Files.exists(temp)) throw new IllegalStateException("export checkpoint has no temporary manifest");
+                validateTempCheckpoint(temp, spec, start);
+                truncateToFrame(temp, start);
+                writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+            }
             nextFrame = start;
         } catch (IOException ex) { cleanupTemp(); throw new IllegalStateException("failed to open export manifest", ex); }
     }
@@ -77,57 +82,62 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
     private void field(String n, long v, boolean comma) throws IOException { writer.write("  \""); writer.write(n); writer.write("\": "); writer.write(Long.toString(v)); if (comma) writer.write(','); writer.write('\n'); }
     private void field(String n, double v, boolean comma, int indent) throws IOException { writer.write(" ".repeat(indent)); writer.write("\""); writer.write(n); writer.write("\": "); writer.write(number(v)); if (comma) writer.write(','); writer.write('\n'); }
 
+    /** Validates the paused manifest header and completed frame sequence before resuming. */
+    private static void validateTempCheckpoint(Path temp, DirectorExportSpec expected, long next) throws IOException {
+        String json = Files.readString(temp, StandardCharsets.UTF_8);
+        try {
+            if (!expected.sceneName().equals(stringField(json, "scene"))
+                    || expected.startTick() != longField(json, "startTick")
+                    || expected.endTick() != longField(json, "endTick")
+                    || expected.fps() != longField(json, "fps")
+                    || expected.width() != longField(json, "width")
+                    || expected.height() != longField(json, "height")
+                    || expected.frameCount() != longField(json, "frameCount")) {
+                throw new IllegalArgumentException("temporary manifest does not match export spec");
+            }
+        } catch (IllegalArgumentException ex) {
+            throw ex;
+        }
+        long found = 0L;
+        int cursor = json.indexOf("\"frames\": [");
+        if (cursor < 0) throw new IllegalArgumentException("temporary manifest has invalid frame section");
+        while (found < next) {
+            int marker = json.indexOf("\"index\": " + found + ",", cursor);
+            if (marker < 0) throw new IllegalArgumentException("temporary manifest is missing completed frame " + found);
+            cursor = marker + 1;
+            found++;
+        }
+        if (json.indexOf("\"index\": " + next + ",", cursor) >= 0) throw new IllegalArgumentException("temporary manifest contains uncheckpointed frame " + next);
+    }
+
+    private static String stringField(String json, String name) {
+        String marker = "\"" + name + "\": \""; int start = json.indexOf(marker);
+        if (start < 0) throw new IllegalArgumentException("missing temporary manifest field: " + name); start += marker.length();
+        StringBuilder value = new StringBuilder(); boolean escaped = false;
+        for (int i = start; i < json.length(); i++) { char c = json.charAt(i); if (escaped) { switch (c) { case '"' -> value.append('"'); case '\\' -> value.append('\\'); case 'n' -> value.append('\n'); case 'r' -> value.append('\r'); case 't' -> value.append('\t'); default -> throw new IllegalArgumentException("invalid manifest escape: " + c); } escaped = false; } else if (c == '\\') escaped = true; else if (c == '"') return value.toString(); else value.append(c); }
+        throw new IllegalArgumentException("invalid temporary manifest field: " + name);
+    }
+    private static long longField(String json, String name) {
+        String marker = "\"" + name + "\":"; int start = json.indexOf(marker);
+        if (start < 0) throw new IllegalArgumentException("missing temporary manifest field: " + name); start += marker.length();
+        while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
+        int end = start; if (end < json.length() && json.charAt(end) == '-') end++; int digits = end;
+        while (end < json.length() && Character.isDigit(json.charAt(end))) end++;
+        if (end == digits) throw new IllegalArgumentException("invalid temporary manifest field: " + name);
+        return Long.parseLong(json.substring(start, end));
+    }
+
     /** Truncates a paused manifest after the last completed frame represented by next. */
     private static void truncateToFrame(Path temp, long next) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(temp.toFile(), "rw")) {
-            if (next == 0) {
-                String line;
-                while ((line = raf.readLine()) != null) if (line.contains("\"frames\": [")) { raf.setLength(raf.getFilePointer()); return; }
-                throw new IllegalArgumentException("temporary manifest has invalid header");
-            }
-
-            long target = next - 1;
-            raf.seek(0L);
-            String line;
-            long targetIndexLineStart = -1L;
-            while (true) {
-                long lineStart = raf.getFilePointer();
-                line = raf.readLine();
-                if (line == null) break;
-                if (line.contains("\"index\": " + target + ",")) { targetIndexLineStart = lineStart; break; }
-            }
+            if (next == 0) { String line; while ((line = raf.readLine()) != null) if (line.contains("\"frames\": [")) { raf.setLength(raf.getFilePointer()); return; } throw new IllegalArgumentException("temporary manifest has invalid header"); }
+            long target = next - 1; raf.seek(0L); String line; long targetIndexLineStart = -1L;
+            while (true) { long lineStart = raf.getFilePointer(); line = raf.readLine(); if (line == null) break; if (line.contains("\"index\": " + target + ",")) { targetIndexLineStart = lineStart; break; } }
             if (targetIndexLineStart < 0) throw new IllegalArgumentException("temporary manifest does not contain completed checkpoint frame " + target);
-
-            long frameStart = targetIndexLineStart;
-            while (frameStart > 0) {
-                raf.seek(frameStart - 1);
-                if (raf.read() == '{') break;
-                frameStart--;
-            }
+            long frameStart = targetIndexLineStart; while (frameStart > 0) { raf.seek(frameStart - 1); if (raf.read() == '{') break; frameStart--; }
             if (frameStart <= 0) throw new IllegalArgumentException("temporary manifest has invalid checkpoint frame boundary");
-
-            long frameEnd = frameStart;
-            raf.seek(frameStart);
-            boolean inString = false;
-            boolean escaped = false;
-            int depth = 0;
-            while (true) {
-                int b = raf.read();
-                if (b < 0) throw new IllegalArgumentException("temporary manifest has incomplete checkpoint frame");
-                char c = (char) b;
-                if (inString) {
-                    if (escaped) escaped = false;
-                    else if (c == '\\') escaped = true;
-                    else if (c == '"') inString = false;
-                    continue;
-                }
-                if (c == '"') { inString = true; continue; }
-                if (c == '{') depth++;
-                else if (c == '}') {
-                    depth--;
-                    if (depth == 0) { frameEnd = raf.getFilePointer(); break; }
-                }
-            }
+            long frameEnd = frameStart; raf.seek(frameStart); boolean inString = false; boolean escaped = false; int depth = 0;
+            while (true) { int b = raf.read(); if (b < 0) throw new IllegalArgumentException("temporary manifest has incomplete checkpoint frame"); char c = (char) b; if (inString) { if (escaped) escaped = false; else if (c == '\\') escaped = true; else if (c == '"') inString = false; continue; } if (c == '"') { inString = true; continue; } if (c == '{') depth++; else if (c == '}') { depth--; if (depth == 0) { frameEnd = raf.getFilePointer(); break; } } }
             raf.setLength(frameEnd);
         }
     }
