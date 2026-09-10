@@ -29,7 +29,7 @@ class DirectorExportJobTest {
 
     @Test
     void respectsPerStepBudgetAndCanFinishLater() {
-        DirectorExportSpec spec = new DirectorExportSpec("job", 0, 5, 40, 640, 360);
+        DirectorExportSpec spec = new DirectorExportSpec("job", 0, 5, 20, 640, 360);
         DirectorExportJob job = new DirectorExportJob(spec, tick ->
                 new CameraTransform(tick, 0, 0, 0, 0, 0, 70));
 
