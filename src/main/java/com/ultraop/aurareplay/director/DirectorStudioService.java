@@ -57,7 +57,7 @@ public final class DirectorStudioService {
         inventory.setItem(20, item(Material.CLOCK, "Add Shot", "Create a new 40-tick shot"));
         inventory.setItem(21, item(Material.BRUSH, "Add Path Point", "Capture your current position and rotation"));
         inventory.setItem(22, item(Material.REDSTONE, "Remove Path Point", "Remove the point at the current local tick"));
-        inventory.setItem(23, item(playing ? Material.PAUSE : Material.PLAY, playing ? "Pause Director" : "Play Director", playing ? "Pause at the current playback tick" : "Play from the current timeline tick"));
+        inventory.setItem(23, item(Material.REPEATER, playing ? "Pause Director" : "Play Director", playing ? "Pause at the current playback tick" : "Play from the current timeline tick"));
         inventory.setItem(24, item(Material.ENDER_EYE, "Preview Director", "Render the current director cursor without starting playback"));
         inventory.setItem(25, item(Material.BARRIER, "Stop Director", "Stop playback and restore the normal camera"));
         inventory.setItem(26, item(Material.ARROW, "Close Director"));
@@ -237,12 +237,10 @@ public final class DirectorStudioService {
     private static ItemStack item(Material material, String name, String... lore) {
         ItemStack stack = new ItemStack(material);
         ItemMeta meta = stack.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(ChatColor.WHITE + name);
-            meta.setLore(List.of(lore).stream().map(line -> ChatColor.GRAY + line).toList());
-            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
-            stack.setItemMeta(meta);
-        }
+        meta.setDisplayName(ChatColor.WHITE + name);
+        meta.setLore(java.util.Arrays.stream(lore).map(line -> ChatColor.GRAY + line).toList());
+        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+        stack.setItemMeta(meta);
         return stack;
     }
 
@@ -252,7 +250,13 @@ public final class DirectorStudioService {
         private final Mode mode;
         private final String sceneName;
         private final String shotId;
-        public Holder(Mode mode, String sceneName, String shotId) { this.mode = mode; this.sceneName = sceneName; this.shotId = shotId; }
+
+        public Holder(Mode mode, String sceneName, String shotId) {
+            this.mode = Objects.requireNonNull(mode, "mode");
+            this.sceneName = Objects.requireNonNull(sceneName, "sceneName");
+            this.shotId = shotId;
+        }
+
         public Mode mode() { return mode; }
         public String sceneName() { return sceneName; }
         public String shotId() { return shotId; }
