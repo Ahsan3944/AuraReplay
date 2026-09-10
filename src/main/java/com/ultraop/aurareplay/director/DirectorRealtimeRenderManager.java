@@ -34,31 +34,45 @@ public final class DirectorRealtimeRenderManager {
         UUID id = viewer.getUniqueId();
         if (sessions.containsKey(id)) return false;
         failures.remove(id);
-        sessions.put(id, new DirectorRealtimeRenderSession(spec, bridge, viewer, sampler, captureSink));
+        DirectorRealtimeRenderSession session = new DirectorRealtimeRenderSession(spec, bridge, viewer, sampler, captureSink);
+        sessions.put(id, session);
         return true;
     }
 
     public boolean tick(Player viewer) {
-        DirectorRealtimeRenderSession session = sessions.get(viewer.getUniqueId());
+        Objects.requireNonNull(viewer, "viewer");
+        return tick(viewer.getUniqueId());
+    }
+
+    public boolean tick(UUID viewerId) {
+        Objects.requireNonNull(viewerId, "viewerId");
+        DirectorRealtimeRenderSession session = sessions.get(viewerId);
         if (session == null) return false;
         try {
             session.tick();
         } catch (Throwable ex) {
-            failures.put(viewer.getUniqueId(), ex);
+            failures.put(viewerId, ex);
         }
         if (session.state() == DirectorRealtimeRenderSession.State.COMPLETED
                 || session.state() == DirectorRealtimeRenderSession.State.STOPPED
                 || session.state() == DirectorRealtimeRenderSession.State.FAILED) {
-            sessions.remove(viewer.getUniqueId(), session);
+            sessions.remove(viewerId, session);
             if (session.state() == DirectorRealtimeRenderSession.State.FAILED && session.failure() != null) {
-                failures.put(viewer.getUniqueId(), session.failure());
+                failures.put(viewerId, session.failure());
             }
         }
         return true;
     }
 
     public boolean stop(Player viewer) {
-        DirectorRealtimeRenderSession session = sessions.remove(viewer.getUniqueId());
+        Objects.requireNonNull(viewer, "viewer");
+        return stop(viewer.getUniqueId());
+    }
+
+    /** Stops and removes a session without requiring the Player object, for disconnect cleanup. */
+    public boolean stop(UUID viewerId) {
+        Objects.requireNonNull(viewerId, "viewerId");
+        DirectorRealtimeRenderSession session = sessions.remove(viewerId);
         if (session == null) return false;
         session.stop();
         return true;
@@ -68,24 +82,40 @@ public final class DirectorRealtimeRenderManager {
         viewers.forEach(this::stop);
     }
 
-    public boolean active(Player viewer) { return sessions.containsKey(viewer.getUniqueId()); }
+    public boolean active(Player viewer) { return active(viewer.getUniqueId()); }
+
+    public boolean active(UUID viewerId) {
+        return sessions.containsKey(Objects.requireNonNull(viewerId, "viewerId"));
+    }
 
     public DirectorRealtimeRenderSession.State state(Player viewer) {
-        DirectorRealtimeRenderSession session = sessions.get(viewer.getUniqueId());
+        return state(viewer.getUniqueId());
+    }
+
+    public DirectorRealtimeRenderSession.State state(UUID viewerId) {
+        DirectorRealtimeRenderSession session = sessions.get(Objects.requireNonNull(viewerId, "viewerId"));
         return session == null ? null : session.state();
     }
 
-    public Throwable failure(Player viewer) { return failures.get(viewer.getUniqueId()); }
+    public Throwable failure(Player viewer) { return failure(viewer.getUniqueId()); }
 
-    public Throwable consumeFailure(Player viewer) { return failures.remove(viewer.getUniqueId()); }
+    public Throwable failure(UUID viewerId) { return failures.get(viewerId); }
 
-    public long emittedFrames(Player viewer) {
-        DirectorRealtimeRenderSession session = sessions.get(viewer.getUniqueId());
+    public Throwable consumeFailure(Player viewer) { return consumeFailure(viewer.getUniqueId()); }
+
+    public Throwable consumeFailure(UUID viewerId) { return failures.remove(viewerId); }
+
+    public long emittedFrames(Player viewer) { return emittedFrames(viewer.getUniqueId()); }
+
+    public long emittedFrames(UUID viewerId) {
+        DirectorRealtimeRenderSession session = sessions.get(viewerId);
         return session == null ? 0L : session.emittedFrames();
     }
 
-    public long elapsedTicks(Player viewer) {
-        DirectorRealtimeRenderSession session = sessions.get(viewer.getUniqueId());
+    public long elapsedTicks(Player viewer) { return elapsedTicks(viewer.getUniqueId()); }
+
+    public long elapsedTicks(UUID viewerId) {
+        DirectorRealtimeRenderSession session = sessions.get(viewerId);
         return session == null ? 0L : session.elapsedTicks();
     }
 
@@ -96,6 +126,7 @@ public final class DirectorRealtimeRenderManager {
 
     public int sessionCount() { return sessions.size(); }
 
+    /** Cancels every live session and capture before dropping manager state. */
     public void clear() {
         sessions.values().forEach(DirectorRealtimeRenderSession::stop);
         sessions.clear();
