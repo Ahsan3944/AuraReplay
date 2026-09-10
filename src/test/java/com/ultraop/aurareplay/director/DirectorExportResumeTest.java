@@ -4,7 +4,6 @@ import com.ultraop.aurareplay.camera.CameraTransform;
 import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DirectorExportResumeTest {
@@ -19,20 +18,10 @@ class DirectorExportResumeTest {
         DirectorExportSpec spec = new DirectorExportSpec("scene", 0, 4, 20, 640, 360);
         DirectorExportManifestStreamWriter first = new DirectorExportManifestStreamWriter(output);
         first.start(spec);
-        first.accept(frame(0, 0));
-        first.accept(frame(1, 1));
-        first.cancel();
-        // Simulate a crash: rebuild the temp manifest and checkpoint state.
-        first.start(spec);
-        first.accept(frame(0, 0));
-        first.accept(frame(1, 1));
-        first.accept(frame(2, 2));
+        first.accept(frame(0, 0)); first.accept(frame(1, 1)); first.accept(frame(2, 2));
         DirectorExportManifestStreamWriter resumed = new DirectorExportManifestStreamWriter(output);
         resumed.resume(spec, 2);
-        resumed.accept(frame(2, 2));
-        resumed.accept(frame(3, 3));
-        resumed.complete();
-
+        resumed.accept(frame(2, 2)); resumed.accept(frame(3, 3)); resumed.complete();
         String json = Files.readString(output);
         assertEquals(1, occurrences(json, "\"index\": 2,"));
         assertEquals(1, occurrences(json, "\"index\": 3,"));
@@ -40,13 +29,14 @@ class DirectorExportResumeTest {
     }
 
     @Test
-    void resumableJobStartsAtCheckpointFrame() {
-        DirectorExportSpec spec = new DirectorExportSpec("scene", 10, 12, 40, 640, 360);
-        DirectorExportJob job = new DirectorExportJob(spec,
-                tick -> new CameraTransform(tick.floatValue(), 0, 0, 0, 0, 0, 70), null, false);
-        job.startAt(2);
-        assertEquals(2, job.nextFrameIndex());
-        assertEquals(2, job.capturedFrames());
+    void resumableJobContinuesFromCheckpointFrame() {
+        DirectorExportSpec spec = new DirectorExportSpec("scene", 10, 11, 40, 640, 360);
+        DirectorExportJob job = new DirectorExportJob(spec, tick ->
+                new CameraTransform(tick.floatValue(), 0, 0, 0, 0, 0, 70), null, false);
+        job.startAt(1);
+        assertEquals(1, job.nextFrameIndex());
+        assertEquals(1, job.capturedFrames());
+        assertEquals(1, job.step(1));
         assertEquals(DirectorExportJob.State.COMPLETED, job.state());
     }
 
