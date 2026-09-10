@@ -65,9 +65,30 @@ public final class DirectorExportCheckpointStore {
         int start = json.indexOf(marker);
         if (start < 0) throw new IllegalArgumentException("missing checkpoint field: " + name);
         start += marker.length();
-        int end = json.indexOf('"', start);
-        if (end < 0) throw new IllegalArgumentException("invalid checkpoint field: " + name);
-        return json.substring(start, end).replace("\\\"", "\"").replace("\\\\", "\\");
+
+        StringBuilder value = new StringBuilder();
+        boolean escaped = false;
+        for (int i = start; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (escaped) {
+                switch (c) {
+                    case '"' -> value.append('"');
+                    case '\\' -> value.append('\\');
+                    case 'n' -> value.append('\n');
+                    case 'r' -> value.append('\r');
+                    case 't' -> value.append('\t');
+                    default -> throw new IllegalArgumentException("invalid checkpoint escape: \\" + c);
+                }
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                return value.toString();
+            } else {
+                value.append(c);
+            }
+        }
+        throw new IllegalArgumentException("invalid checkpoint field: " + name);
     }
 
     private static long longField(String json, String name) {
