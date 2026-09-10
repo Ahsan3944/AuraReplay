@@ -58,6 +58,15 @@ public final class ActorPlaybackController {
         if (viewerSessions.replace(actorId, old, replacement)) closeSource(old.source());
     }
 
+    /** Returns the current render sample for one viewer-local actor session. Must run on the server thread. */
+    public ActorSample sample(Player viewer, ActorId actorId) {
+        if (viewer == null || actorId == null) return null;
+        Map<ActorId, ActorPlayback> viewerSessions = sessions.get(viewer.getUniqueId());
+        if (viewerSessions == null) return null;
+        ActorPlayback playback = viewerSessions.get(actorId);
+        return playback == null ? null : playback.sampleState();
+    }
+
     public void tickScene(Player viewer, Iterable<ActorId> actorIds, double sceneTick) {
         Map<ActorId, ActorPlayback> viewerSessions=sessions.get(viewer.getUniqueId()); if(viewerSessions==null)return;
         for(ActorId actorId:actorIds){ActorPlayback playback=viewerSessions.get(actorId);if(playback==null)continue;ActorDefinition actor=playback.actor();if(!actor.visible()){backend.destroy(actor,viewer);continue;}if(!actor.frozen())playback.setScenePosition(sceneTick);prefetch(playback);render(playback,viewer);}
@@ -68,43 +77,31 @@ public final class ActorPlaybackController {
     }
     public void stop(Player viewer, ActorId actorId){Map<ActorId,ActorPlayback>m=sessions.get(viewer.getUniqueId());if(m==null)return;ActorPlayback p=m.remove(actorId);if(p!=null){backend.destroy(p.actor(),viewer);closeSource(p.source());}if(m.isEmpty())sessions.remove(viewer.getUniqueId(),m);}
     public void stopAll(Player viewer){Map<ActorId,ActorPlayback>m=sessions.remove(viewer.getUniqueId());if(m==null)return;for(ActorPlayback p:m.values()){backend.destroy(p.actor(),viewer);closeSource(p.source());}}
-
-    /** Stops every active viewer session that depends on a recording. Must run on the server thread. */
     public int stopUsingRecording(String recordingName) {
-        String normalized = normalizeRecordingName(recordingName);
-        int stopped = 0;
+        String normalized = normalizeRecordingName(recordingName); int stopped = 0;
         for (Map.Entry<UUID, Map<ActorId, ActorPlayback>> entry : new HashSet<>(sessions.entrySet())) {
-            Player viewer = Bukkit.getPlayer(entry.getKey());
-            if (viewer == null) continue;
+            Player viewer = Bukkit.getPlayer(entry.getKey()); if (viewer == null) continue;
             for (ActorPlayback playback : new HashSet<>(entry.getValue().values())) {
                 if (normalizeRecordingName(playback.actor().recording().name()).equals(normalized)) { stop(viewer, playback.actor().id()); stopped++; }
             }
         }
         return stopped;
     }
-
-    /** Stops every active viewer session for one actor instance. Must run on the server thread. */
     public int stopUsingActor(ActorId actorId) {
-        if (actorId == null) return 0;
-        int stopped = 0;
+        if (actorId == null) return 0; int stopped = 0;
         for (Map.Entry<UUID, Map<ActorId, ActorPlayback>> entry : new HashSet<>(sessions.entrySet())) {
-            Player viewer = Bukkit.getPlayer(entry.getKey());
-            if (viewer == null) continue;
+            Player viewer = Bukkit.getPlayer(entry.getKey()); if (viewer == null) continue;
             if (entry.getValue().containsKey(actorId)) { stop(viewer, actorId); stopped++; }
         }
         return stopped;
     }
-
     public void tick(Player viewer){tickStandalone(viewer,Set.of());}
     public void clear(){for(Map<ActorId,ActorPlayback> viewerSessions:sessions.values())for(ActorPlayback playback:viewerSessions.values())closeSource(playback.source());sessions.clear();}
     public int sessionCount(){return sessions.values().stream().mapToInt(Map::size).sum();}
-
     private void prefetch(ActorPlayback playback){
         if(!(playback.source() instanceof IndexedActorPlaybackSource indexed)||prefetchExecutor==null||indexed.frameCount()==0)return;
-        int center=(int)Math.floor(Math.max(0.0d,playback.cursor().position()));
-        int distanceToEnd=indexed.frameCount()-1-center;
-        if(center<=PREFETCH_TRIGGER || distanceToEnd<=PREFETCH_TRIGGER || center%PREFETCH_TRIGGER==0)
-            indexed.prefetchAsync(center,PREFETCH_RADIUS,prefetchExecutor);
+        int center=(int)Math.floor(Math.max(0.0d,playback.cursor().position())); int distanceToEnd=indexed.frameCount()-1-center;
+        if(center<=PREFETCH_TRIGGER || distanceToEnd<=PREFETCH_TRIGGER || center%PREFETCH_TRIGGER==0) indexed.prefetchAsync(center,PREFETCH_RADIUS,prefetchExecutor);
     }
     private static int initialFrame(ActorDefinition actor,ActorPlaybackSource source){return actor.reverse()?Math.max(0,source.frameCount()-1):0;}
     private static void closeSource(ActorPlaybackSource source){if(source instanceof IndexedActorPlaybackSource indexed)indexed.clearCache();}
