@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class DirectorRenderSessionTest {
     private static CameraTransform transform() {
-        return new CameraTransform(0, 64, 0, 0, 0, 70);
+        return new CameraTransform(0, 64, 0, 0, 0, 0, 70);
     }
 
     @Test
