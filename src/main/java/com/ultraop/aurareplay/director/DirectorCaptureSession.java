@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /** Validates capture lifecycle and deterministic frame ordering before forwarding frames. */
 public final class DirectorCaptureSession {
-    public enum State { READY, RUNNING, COMPLETED, CANCELLED, FAILED }
+    public enum State { READY, RUNNING, PAUSED, COMPLETED, CANCELLED, FAILED }
     private final DirectorExportSpec spec;
     private final DirectorCaptureSink sink;
     private long nextFrame;
@@ -39,7 +39,13 @@ public final class DirectorCaptureSession {
         try { sink.accept(frame); nextFrame++; if (nextFrame >= spec.frameCount()) complete(); }
         catch (Throwable ex) { fail(ex); throw ex; }
     }
+
+    public void pause() {
+        if (state != State.RUNNING) return;
+        try { sink.pause(); } finally { state = State.PAUSED; }
+    }
+
     public void complete() { if (state == State.COMPLETED) return; if (state != State.RUNNING) throw new IllegalStateException("capture session is not running"); if (nextFrame != spec.frameCount()) throw new IllegalStateException("capture is incomplete: " + nextFrame + "/" + spec.frameCount()); sink.complete(); state = State.COMPLETED; }
-    public void cancel() { if (state != State.READY && state != State.RUNNING) return; try { sink.cancel(); } finally { state = State.CANCELLED; } }
+    public void cancel() { if (state != State.READY && state != State.RUNNING && state != State.PAUSED) return; try { sink.cancel(); } finally { state = State.CANCELLED; } }
     public void fail(Throwable error) { Objects.requireNonNull(error, "error"); if (state == State.COMPLETED || state == State.CANCELLED) return; failure = error; try { sink.fail(error); } finally { state = State.FAILED; } }
 }
