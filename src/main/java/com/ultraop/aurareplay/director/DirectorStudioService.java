@@ -51,14 +51,15 @@ public final class DirectorStudioService {
             DirectorShot shot = shots.get(i);
             inventory.setItem(i, item(Material.SPYGLASS, shot.id(), "Range: " + shot.startTick() + " - " + shot.endTick(), "Type: " + shot.type(), "Transition: " + shot.transition(), "Camera: " + shot.cameraId(), "Target: " + displayTarget(shot), "Path points: " + shot.path().points().size()));
         }
+        boolean playing = director.playing(player);
         inventory.setItem(18, item(Material.ARROW, "Timeline -20", "Move cursor back 20 ticks"));
         inventory.setItem(19, item(Material.ARROW, "Timeline +20", "Move cursor forward 20 ticks"));
         inventory.setItem(20, item(Material.CLOCK, "Add Shot", "Create a new 40-tick shot"));
         inventory.setItem(21, item(Material.BRUSH, "Add Path Point", "Capture your current position and rotation"));
         inventory.setItem(22, item(Material.REDSTONE, "Remove Path Point", "Remove the point at the current local tick"));
-        inventory.setItem(23, item(Material.ENDER_EYE, "Preview Director", "Preview the current director cursor"));
-        inventory.setItem(24, item(Material.REPEATER, "Next Shot Type", "Cycle all shot types"));
-        inventory.setItem(25, item(Material.LEVER, "Next Transition", "Cycle CUT/BLEND/FADE"));
+        inventory.setItem(23, item(playing ? Material.PAUSE : Material.PLAY, playing ? "Pause Director" : "Play Director", playing ? "Pause at the current playback tick" : "Play from the current timeline tick"));
+        inventory.setItem(24, item(Material.ENDER_EYE, "Preview Director", "Render the current director cursor without starting playback"));
+        inventory.setItem(25, item(Material.BARRIER, "Stop Director", "Stop playback and restore the normal camera"));
         inventory.setItem(26, item(Material.ARROW, "Close Director"));
         player.openInventory(inventory);
     }
@@ -236,10 +237,12 @@ public final class DirectorStudioService {
     private static ItemStack item(Material material, String name, String... lore) {
         ItemStack stack = new ItemStack(material);
         ItemMeta meta = stack.getItemMeta();
-        meta.setDisplayName(ChatColor.AQUA + name);
-        meta.setLore(List.of(lore));
-        if (name.startsWith("[CURRENT]")) meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
-        stack.setItemMeta(meta);
+        if (meta != null) {
+            meta.setDisplayName(ChatColor.WHITE + name);
+            meta.setLore(List.of(lore).stream().map(line -> ChatColor.GRAY + line).toList());
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+            stack.setItemMeta(meta);
+        }
         return stack;
     }
 
@@ -249,13 +252,7 @@ public final class DirectorStudioService {
         private final Mode mode;
         private final String sceneName;
         private final String shotId;
-
-        public Holder(Mode mode, String sceneName, String shotId) {
-            this.mode = Objects.requireNonNull(mode, "mode");
-            this.sceneName = Objects.requireNonNull(sceneName, "sceneName");
-            this.shotId = shotId;
-        }
-
+        public Holder(Mode mode, String sceneName, String shotId) { this.mode = mode; this.sceneName = sceneName; this.shotId = shotId; }
         public Mode mode() { return mode; }
         public String sceneName() { return sceneName; }
         public String shotId() { return shotId; }
