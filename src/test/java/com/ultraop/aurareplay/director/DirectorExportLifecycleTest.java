@@ -3,6 +3,7 @@ package com.ultraop.aurareplay.director;
 import com.ultraop.aurareplay.camera.CameraTransform;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -37,6 +38,46 @@ class DirectorExportLifecycleTest {
 
         assertTrue(Files.exists(output));
         assertFalse(Files.exists(output.resolveSibling("shot.json.tmp")));
+    }
+
+    @Test
+    void resumeRejectsTemporaryManifestWithDifferentSpec() throws Exception {
+        Path dir = Files.createTempDirectory("aurareplay-resume-mismatch-");
+        Path output = dir.resolve("shot.json");
+        DirectorExportSpec original = new DirectorExportSpec("scene", 0, 4, 20, 640, 360);
+        DirectorExportSpec different = new DirectorExportSpec("other", 0, 4, 20, 640, 360);
+        DirectorExportManifestStreamWriter writer = new DirectorExportManifestStreamWriter(output);
+        writer.start(original);
+        writer.accept(frame(0, original));
+        writer.pause();
+
+        DirectorExportManifestStreamWriter resumed = new DirectorExportManifestStreamWriter(output);
+        assertThrows(IllegalArgumentException.class, () -> resumed.resume(different, 1));
+        assertTrue(Files.exists(output.resolveSibling("shot.json.tmp")));
+        assertFalse(Files.exists(output));
+    }
+
+    @Test
+    void resumeRejectsMissingCheckpointFrame() throws Exception {
+        Path dir = Files.createTempDirectory("aurareplay-resume-corrupt-");
+        Path output = dir.resolve("shot.json");
+        DirectorExportSpec spec = new DirectorExportSpec("scene", 0, 4, 20, 640, 360);
+        String corrupt = "{\n" +
+                "  \"scene\": \"scene\",\n" +
+                "  \"startTick\": 0,\n" +
+                "  \"endTick\": 4,\n" +
+                "  \"fps\": 20,\n" +
+                "  \"width\": 640,\n" +
+                "  \"height\": 360,\n" +
+                "  \"frameCount\": 4,\n" +
+                "  \"frames\": [\n" +
+                "    {\n      \"index\": 0,\n      \"tick\": 0,\n      \"camera\": {}\n    }\n" +
+                "  ]\n}\n";
+        Files.writeString(output.resolveSibling("shot.json.tmp"), corrupt, StandardCharsets.UTF_8);
+
+        DirectorExportManifestStreamWriter resumed = new DirectorExportManifestStreamWriter(output);
+        assertThrows(IllegalArgumentException.class, () -> resumed.resume(spec, 2));
+        assertTrue(Files.exists(output.resolveSibling("shot.json.tmp")));
     }
 
     @Test
