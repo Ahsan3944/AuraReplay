@@ -78,11 +78,15 @@ public final class DirectorExportManifestStreamWriter implements DirectorCapture
     private void field(String n, long v, boolean comma) throws IOException { writer.write("  \""); writer.write(n); writer.write("\": "); writer.write(Long.toString(v)); if (comma) writer.write(','); writer.write('\n'); }
     private void field(String n, double v, boolean comma, int indent) throws IOException { writer.write(" ".repeat(indent)); writer.write("\""); writer.write(n); writer.write("\": "); writer.write(number(v)); if (comma) writer.write(','); writer.write('\n'); }
 
-    /** Finds the checkpoint frame and truncates the temp file before it, removing any post-checkpoint bytes. */
+    /** Finds the checkpoint frame and truncates the temp file before its separator. */
     private static void truncateToFrame(Path temp, long next) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(temp.toFile(), "rw")) {
             if (next == 0) { String line; while ((line = raf.readLine()) != null) if (line.contains("\"frames\": [")) { raf.setLength(raf.getFilePointer()); return; } throw new IllegalArgumentException("temporary manifest has invalid header"); }
-            String line; while (true) { long start = raf.getFilePointer(); line = raf.readLine(); if (line == null) break; if (line.contains("\"index\": " + next + ",")) { raf.setLength(Math.max(0L, start - 4L)); return; } }
+            String line;
+            while (true) {
+                long start = raf.getFilePointer(); line = raf.readLine(); if (line == null) break;
+                if (line.contains("\"index\": " + next + ",")) { raf.setLength(Math.max(0L, start - 2L)); return; }
+            }
             throw new IllegalArgumentException("temporary manifest does not contain checkpoint frame " + next);
         }
     }
