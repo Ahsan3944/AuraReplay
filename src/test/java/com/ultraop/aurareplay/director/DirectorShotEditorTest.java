@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DirectorShotEditorTest {
-    private static CameraTransform camera() { return CameraTransform.origin(); }
+    private static CameraTransform camera() { return CameraTransform.origin(0, 64, 0, 0, 0); }
 
     @Test
     void editsTypeAndTransition() {
