@@ -8,14 +8,15 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class DirectorRenderFrameTest {
     @Test
     void preservesDeterministicActorOrderAndDefensivelyCopiesMap() {
-        ActorId first = new ActorId("first");
-        ActorId second = new ActorId("second");
+        ActorId first = new ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        ActorId second = new ActorId(UUID.fromString("00000000-0000-0000-0000-000000000002"));
         Map<ActorId, ActorSample> source = new LinkedHashMap<>();
         source.put(first, null);
         source.put(second, null);
