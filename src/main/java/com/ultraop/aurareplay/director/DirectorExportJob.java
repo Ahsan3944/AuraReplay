@@ -5,6 +5,7 @@ import com.ultraop.aurareplay.camera.CameraTransform;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /** Incremental, main-thread-safe frame collection for a Director export. */
@@ -13,14 +14,22 @@ public final class DirectorExportJob {
 
     private final DirectorExportSpec spec;
     private final Function<Double, CameraTransform> sampler;
+    private final Consumer<DirectorFrame> frameConsumer;
     private final List<DirectorFrame> frames;
     private long nextFrame;
     private State state = State.READY;
     private Throwable failure;
 
     public DirectorExportJob(DirectorExportSpec spec, Function<Double, CameraTransform> sampler) {
+        this(spec, sampler, null);
+    }
+
+    public DirectorExportJob(DirectorExportSpec spec,
+                             Function<Double, CameraTransform> sampler,
+                             Consumer<DirectorFrame> frameConsumer) {
         this.spec = Objects.requireNonNull(spec, "spec");
         this.sampler = Objects.requireNonNull(sampler, "sampler");
+        this.frameConsumer = frameConsumer;
         this.frames = new ArrayList<>((int) Math.min(spec.frameCount(), Integer.MAX_VALUE));
     }
 
@@ -44,7 +53,9 @@ public final class DirectorExportJob {
         int captured = 0;
         try {
             while (captured < maxFrames && nextFrame < spec.frameCount()) {
-                frames.add(DirectorExportPlanner.sample(spec, nextFrame, sampler));
+                DirectorFrame frame = DirectorExportPlanner.sample(spec, nextFrame, sampler);
+                if (frameConsumer != null) frameConsumer.accept(frame);
+                frames.add(frame);
                 nextFrame++;
                 captured++;
             }
