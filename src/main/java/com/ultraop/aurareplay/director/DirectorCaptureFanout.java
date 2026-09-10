@@ -14,32 +14,10 @@ public final class DirectorCaptureFanout implements DirectorCaptureSink {
         if (this.sinks.isEmpty()) throw new IllegalArgumentException("at least one sink is required");
     }
 
-    @Override
-    public void start(DirectorExportSpec spec) {
-        for (DirectorCaptureSink sink : sinks) sink.start(spec);
-    }
-
-    @Override
-    public void accept(DirectorFrame frame) {
-        for (DirectorCaptureSink sink : sinks) sink.accept(frame);
-    }
-
-    @Override
-    public void complete() {
-        for (DirectorCaptureSink sink : sinks) sink.complete();
-    }
-
-    @Override
-    public void cancel() {
-        for (DirectorCaptureSink sink : sinks) {
-            try { sink.cancel(); } catch (Throwable ignored) { }
-        }
-    }
-
-    @Override
-    public void fail(Throwable error) {
-        for (DirectorCaptureSink sink : sinks) {
-            try { sink.fail(error); } catch (Throwable ignored) { }
-        }
-    }
+    @Override public void start(DirectorExportSpec spec) { for (DirectorCaptureSink sink : sinks) sink.start(spec); }
+    @Override public void accept(DirectorFrame frame) { for (DirectorCaptureSink sink : sinks) sink.accept(frame); }
+    @Override public void complete() { for (DirectorCaptureSink sink : sinks) sink.complete(); }
+    @Override public void pause() { for (DirectorCaptureSink sink : sinks) { try { sink.pause(); } catch (Throwable ignored) { } } }
+    @Override public void cancel() { for (DirectorCaptureSink sink : sinks) { try { sink.cancel(); } catch (Throwable ignored) { } } }
+    @Override public void fail(Throwable error) { for (DirectorCaptureSink sink : sinks) { try { sink.fail(error); } catch (Throwable ignored) { } } }
 }
