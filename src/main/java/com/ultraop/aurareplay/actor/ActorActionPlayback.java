@@ -18,10 +18,7 @@ public final class ActorActionPlayback {
     /** Returns actions crossed by forward playback in the half-open interval (previous, tick]. */
     public List<ActorActionEvent> advance(long tick) {
         if (tick < 0) throw new IllegalArgumentException("tick must be >= 0");
-        if (tick < lastTick) {
-            lastTick = tick;
-            return List.of();
-        }
+        if (tick < lastTick) return List.of();
         List<ActorActionEvent> events = timeline.between(lastTick + 1L, tick + 1L);
         lastTick = tick;
         return events;
