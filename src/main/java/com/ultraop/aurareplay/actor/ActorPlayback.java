@@ -15,13 +15,16 @@ public final class ActorPlayback {
     private final ActorPlaybackSource source;
     private final MotionEvaluator motionEvaluator = new MotionEvaluator();
     private final PlaybackCursor cursor = new PlaybackCursor();
+    private final ActorActionPlayback actionPlayback;
     private long elapsedTicks;
+    private double lastActionPosition = Double.NaN;
 
     public ActorPlayback(ActorDefinition actor) { this(actor, new MemoryActorPlaybackSource(actor.recording().frames())); }
 
     public ActorPlayback(ActorDefinition actor, ActorPlaybackSource source) {
         this.actor = Objects.requireNonNull(actor);
         this.source = Objects.requireNonNull(source);
+        this.actionPlayback = new ActorActionPlayback(actor.actionTimeline());
         reset();
     }
 
@@ -29,6 +32,12 @@ public final class ActorPlayback {
     public ActorPlaybackSource source() { return source; }
     public PlaybackCursor cursor() { return cursor; }
     public long elapsedTicks() { return elapsedTicks; }
+
+    /** Advances actor motion by one server tick and returns actions crossed by the new position. */
+    public List<ActorActionEvent> tickActions() {
+        tick();
+        return actionsAt(cursor.position());
+    }
 
     public void tick() {
         elapsedTicks++;
@@ -48,8 +57,20 @@ public final class ActorPlayback {
         elapsedTicks = Math.max(elapsedTicks, (long) Math.floor(Math.max(0.0d, sceneTick)));
     }
 
+    /** Returns actions crossed while moving to the requested actor-local source position. */
+    public List<ActorActionEvent> actionsAt(double position) {
+        if (!Double.isFinite(position)) return List.of();
+        long tick = Math.max(0L, (long) Math.floor(position));
+        if (!Double.isNaN(lastActionPosition) && position < lastActionPosition) actionPlayback.reset();
+        List<ActorActionEvent> events = actionPlayback.advance(tick);
+        lastActionPosition = position;
+        return events;
+    }
+
     public void reset() {
         elapsedTicks = 0L;
+        actionPlayback.reset();
+        lastActionPosition = Double.NaN;
         if (actor.reverse() && playbackDuration() > 0.0d) cursor.seek(playbackDuration() - 1.0d);
         else cursor.reset();
     }
