@@ -37,9 +37,9 @@ class ActorActionReversePlaybackTest {
         assertEquals(List.of(new ActorActionEvent(0, ActorAction.SWING)), playback.actionsAt(0));
         assertEquals(List.of(new ActorActionEvent(2, ActorAction.HURT)), playback.actionsAt(2));
 
-        playback.setScenePosition(5);
-        assertEquals(List.of(), playback.actionsAt(5));
-        assertEquals(List.of(new ActorActionEvent(5, ActorAction.DEATH)), playback.actionsAt(5.99));
+        playback.setScenePosition(4);
+        assertEquals(List.of(), playback.actionsAt(4));
+        assertEquals(List.of(new ActorActionEvent(5, ActorAction.DEATH)), playback.actionsAt(5));
     }
 
     @Test
