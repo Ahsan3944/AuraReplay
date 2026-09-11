@@ -86,7 +86,7 @@ public final class ActorPlayback {
 
         if (suppressNextActionEmission) {
             // A seek lands exactly on the target. Consume that target silently while keeping
-            // the cursor at the target so the next reverse step only crosses earlier events.
+            // the reverse boundary at the target so the next reverse step only crosses earlier events.
             actionPlayback.seek(tick);
             lastActionPosition = position;
             actionDirectionReverse = reverse;
@@ -110,6 +110,8 @@ public final class ActorPlayback {
         suppressNextActionEmission = false;
         if (actor.reverse() && playbackDuration() > 0.0d) {
             cursor.seek(playbackDuration() - 1.0d);
+            // Reverse playback starts just beyond the final source tick so the first
+            // advanceReverse(finalTick) includes the action at that tick exactly once.
             actionPlayback.seek((long) Math.ceil(playbackDuration()));
         } else {
             cursor.reset();
@@ -118,16 +120,20 @@ public final class ActorPlayback {
 
     private void seekActionCursorSilently(double position) {
         long tick = Math.max(0L, (long) Math.floor(position));
-        if (actor.reverse()) actionPlayback.seek(tick);
-        else actionPlayback.seek(tick);
+        actionPlayback.seek(tick);
         lastActionPosition = position;
         actionDirectionReverse = actor.reverse();
     }
 
     private void resetActionCursorForDirection(double position, boolean reverse) {
         long tick = Math.max(0L, (long) Math.floor(position));
-        if (reverse) actionPlayback.seek(tick);
-        else actionPlayback.reset();
+        if (reverse) {
+            // Reverse intervals are [current, previous), so the boundary must sit one
+            // tick beyond the requested position for the action at current to be crossed.
+            actionPlayback.seek(Math.max(0L, tick + 1L));
+        } else {
+            actionPlayback.reset();
+        }
         lastActionPosition = Double.NaN;
         actionDirectionReverse = reverse;
     }
