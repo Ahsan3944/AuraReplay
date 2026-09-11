@@ -124,7 +124,7 @@ public final class ActorPlayback {
     }
 
     private void resetActionCursorForDirection(double position, boolean reverse) {
-        long tick = Math.max(0L, (long) Math.floor(position);
+        long tick = Math.max(0L, (long) Math.floor(position));
         if (reverse) actionPlayback.seek(Math.max(tick, (long) Math.ceil(playbackDuration())));
         else actionPlayback.reset();
         lastActionPosition = Double.NaN;
