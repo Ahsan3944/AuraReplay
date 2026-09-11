@@ -57,9 +57,17 @@ public final class ActorPlayback {
         cursor.seek(position);
         if (actor.loop() && duration > 0.0d) cursor.advance(0.0d, 1.0d, false, playbackDurationTicks(), true);
         elapsedTicks = Math.max(elapsedTicks, (long) Math.floor(Math.max(0.0d, sceneTick)));
-        if (Double.isFinite(lastActionPosition) && Math.abs(position - previous) > 1.0e-9d) {
-            resetActionCursorForSeek(position);
-        }
+
+        if (Double.isNaN(lastActionPosition)) return;
+        double current = cursor.position();
+        double delta = Math.abs(current - previous);
+        double expected = actor.playbackSpeed();
+        boolean continuous = delta > 0.0d && Math.abs(delta - expected) <= 1.0e-9d;
+        if (continuous) return;
+
+        // A discontinuous scene seek must be silent. Position the action cursor at the target
+        // so the next normal tick emits only newly crossed events rather than replaying history.
+        seekActionCursorSilently(current);
     }
 
     /** Returns actions crossed while moving to the requested actor-local source position. */
@@ -97,18 +105,18 @@ public final class ActorPlayback {
         }
     }
 
-    private void resetActionCursorForSeek(double position) {
-        resetActionCursorForDirection(position, actor.reverse());
-        lastActionPosition = Double.NaN;
+    private void seekActionCursorSilently(double position) {
+        long tick = Math.max(0L, (long) Math.floor(position));
+        if (actor.reverse()) actionPlayback.seek(Math.max(tick, (long) Math.ceil(playbackDuration())));
+        else actionPlayback.seek(tick);
+        lastActionPosition = position;
+        actionDirectionReverse = actor.reverse();
     }
 
     private void resetActionCursorForDirection(double position, boolean reverse) {
         long tick = Math.max(0L, (long) Math.floor(position));
-        if (reverse) {
-            actionPlayback.seek(Math.max(tick, (long) Math.ceil(playbackDuration())));
-        } else {
-            actionPlayback.reset();
-        }
+        if (reverse) actionPlayback.seek(Math.max(tick, (long) Math.ceil(playbackDuration())));
+        else actionPlayback.reset();
         lastActionPosition = Double.NaN;
         actionDirectionReverse = reverse;
     }
