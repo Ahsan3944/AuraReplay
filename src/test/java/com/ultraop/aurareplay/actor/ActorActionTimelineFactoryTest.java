@@ -1,8 +1,8 @@
 package com.ultraop.aurareplay.actor;
 
 import com.ultraop.aurareplay.recording.Recording;
-import com.ultraop.aurareplay.recording.TickSnapshot;
 import com.ultraop.aurareplay.recording.action.ActorActionRecord;
+import com.ultraop.aurareplay.recording.snapshot.TickSnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
