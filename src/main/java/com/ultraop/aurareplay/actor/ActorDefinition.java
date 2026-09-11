@@ -13,6 +13,7 @@ public final class ActorDefinition {
     private final Integer sourceEntityId;
     private final MotionStack motionStack = new MotionStack();
     private final ActorAppearance appearance = new ActorAppearance();
+    private ActorActionTimeline actionTimeline = new ActorActionTimeline(java.util.List.of());
     private String name;
     private String namePrefix = "";
     private String nameSuffix = "";
@@ -40,6 +41,7 @@ public final class ActorDefinition {
     public Integer sourceEntityId() { return sourceEntityId; }
     public MotionStack motionStack() { return motionStack; }
     public ActorAppearance appearance() { return appearance; }
+    public ActorActionTimeline actionTimeline() { return actionTimeline; }
     public String name() { return name; }
     public String namePrefix() { return namePrefix; }
     public String nameSuffix() { return nameSuffix; }
@@ -64,4 +66,5 @@ public final class ActorDefinition {
     public void setLoop(boolean loop) { this.loop = loop; }
     public void setReverse(boolean reverse) { this.reverse = reverse; }
     public void setTransform(ActorTransform transform) { this.transform = Objects.requireNonNull(transform); }
+    public void setActionTimeline(ActorActionTimeline timeline) { this.actionTimeline = Objects.requireNonNull(timeline); }
 }
