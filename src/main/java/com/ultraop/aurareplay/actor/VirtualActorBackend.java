@@ -15,6 +15,11 @@ public interface VirtualActorBackend {
         updateEquipment(actor, viewer, sample.source());
     }
 
+    /** Play a sparse animation/action event on the already rendered virtual actor. */
+    default void playAction(ActorDefinition actor, Player viewer, ActorAction action) {
+        // Optional for backends that do not expose protocol-level animation packets.
+    }
+
     void destroy(ActorDefinition actor, Player viewer);
 
     void updateIdentity(ActorDefinition actor, Player viewer);
