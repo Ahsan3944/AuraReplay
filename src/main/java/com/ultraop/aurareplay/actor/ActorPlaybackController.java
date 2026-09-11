@@ -4,6 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -84,11 +85,24 @@ public final class ActorPlaybackController {
 
     public void tickScene(Player viewer, Iterable<ActorId> actorIds, double sceneTick) {
         Map<ActorId, ActorPlayback> viewerSessions=sessions.get(viewer.getUniqueId()); if(viewerSessions==null)return;
-        for(ActorId actorId:actorIds){ActorPlayback playback=viewerSessions.get(actorId);if(playback==null)continue;ActorDefinition actor=playback.actor();if(!actor.visible()){backend.destroy(actor,viewer);continue;}if(!actor.frozen())playback.setScenePosition(sceneTick);prefetch(playback);render(playback,viewer);}
+        for(ActorId actorId:actorIds){
+            ActorPlayback playback=viewerSessions.get(actorId); if(playback==null)continue;
+            ActorDefinition actor=playback.actor(); if(!actor.visible()){backend.destroy(actor,viewer);continue;}
+            if(!actor.frozen()) playback.setScenePosition(sceneTick);
+            prefetch(playback);
+            render(playback,viewer);
+            replayActions(playback,viewer);
+        }
     }
     public void tickStandalone(Player viewer, Set<ActorId> excluded) {
         Map<ActorId,ActorPlayback> viewerSessions=sessions.get(viewer.getUniqueId());if(viewerSessions==null)return;
-        for(ActorPlayback playback:new HashSet<>(viewerSessions.values())){if(excluded.contains(playback.actor().id()))continue;ActorDefinition actor=playback.actor();if(!actor.visible()){backend.destroy(actor,viewer);continue;}playback.tick();prefetch(playback);render(playback,viewer);}
+        for(ActorPlayback playback:new HashSet<>(viewerSessions.values())){
+            if(excluded.contains(playback.actor().id()))continue;
+            ActorDefinition actor=playback.actor();if(!actor.visible()){backend.destroy(actor,viewer);continue;}
+            List<ActorActionEvent> actions=playback.tickActions();
+            prefetch(playback);render(playback,viewer);
+            playActions(actions,actor,viewer);
+        }
     }
     public void stop(Player viewer, ActorId actorId){Map<ActorId,ActorPlayback>m=sessions.get(viewer.getUniqueId());if(m==null)return;ActorPlayback p=m.remove(actorId);if(p!=null){backend.destroy(p.actor(),viewer);closeSource(p.source());}if(m.isEmpty())sessions.remove(viewer.getUniqueId(),m);}
     public void stopAll(Player viewer){Map<ActorId,ActorPlayback>m=sessions.remove(viewer.getUniqueId());if(m==null)return;for(ActorPlayback p:m.values()){backend.destroy(p.actor(),viewer);closeSource(p.source());}}
@@ -113,6 +127,8 @@ public final class ActorPlaybackController {
     public void tick(Player viewer){tickStandalone(viewer,Set.of());}
     public void clear(){for(Map<ActorId,ActorPlayback> viewerSessions:sessions.values())for(ActorPlayback playback:viewerSessions.values())closeSource(playback.source());sessions.clear();}
     public int sessionCount(){return sessions.values().stream().mapToInt(Map::size).sum();}
+    private void replayActions(ActorPlayback playback, Player viewer){playActions(playback.actionsAt(playback.cursor().position()),playback.actor(),viewer);}
+    private void playActions(List<ActorActionEvent> actions, ActorDefinition actor, Player viewer){for(ActorActionEvent event:actions)backend.playAction(actor,viewer,event.action());}
     private void prefetch(ActorPlayback playback){
         if(!(playback.source() instanceof IndexedActorPlaybackSource indexed)||prefetchExecutor==null||indexed.frameCount()==0)return;
         int center=(int)Math.floor(Math.max(0.0d,playback.cursor().position())); int distanceToEnd=indexed.frameCount()-1-center;
