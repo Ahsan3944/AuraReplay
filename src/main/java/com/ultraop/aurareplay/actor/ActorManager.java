@@ -20,6 +20,7 @@ public final class ActorManager {
 
     public ActorDefinition create(Recording recording, ActorTransform transform, UUID sourceEntityUuid, Integer sourceEntityId) {
         ActorDefinition actor = new ActorDefinition(ActorId.random(), recording, transform, sourceEntityUuid, sourceEntityId);
+        actor.setActionTimeline(ActorActionTimelineFactory.fromRecording(recording, sourceEntityUuid));
         actors.put(actor.id(), actor);
         return actor;
     }
