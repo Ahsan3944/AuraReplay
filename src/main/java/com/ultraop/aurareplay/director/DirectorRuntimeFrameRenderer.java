@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -111,18 +112,16 @@ public final class DirectorRuntimeFrameRenderer {
                     actorBackend.updateEquipment(actor, viewer, sample.source());
                 }
 
+                List<ActorActionEvent> events = frame.actions().get(id);
+                if (events == null) events = actor.actionTimeline().at(sceneTick);
                 Long lastSceneTick = actionCursor.get(id);
                 if (lastSceneTick == null || sceneTick < lastSceneTick) {
                     actionCursor.remove(id);
                     lastSceneTick = null;
                 }
                 if (lastSceneTick == null || sceneTick > lastSceneTick) {
-                    for (ActorActionEvent event : frame.actions().getOrDefault(id, java.util.List.of())) {
-                        actorBackend.playAction(actor, viewer, event.action());
-                    }
-                    if (!frame.actions().getOrDefault(id, java.util.List.of()).isEmpty()) {
-                        actionCursor.put(id, sceneTick);
-                    }
+                    for (ActorActionEvent event : events) actorBackend.playAction(actor, viewer, event.action());
+                    if (!events.isEmpty()) actionCursor.put(id, sceneTick);
                 }
 
                 current.add(id);
