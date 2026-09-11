@@ -5,6 +5,7 @@ import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import com.mojang.authlib.properties.PropertyMap;
 import com.mojang.datafixers.util.Pair;
+import com.ultraop.aurareplay.actor.ActorAction;
 import com.ultraop.aurareplay.actor.ActorAppearance;
 import com.ultraop.aurareplay.actor.ActorDefinition;
 import com.ultraop.aurareplay.actor.ActorTransform;
@@ -16,6 +17,8 @@ import com.ultraop.aurareplay.recording.snapshot.EquipmentSnapshot;
 import net.kyori.adventure.text.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.ClientboundAnimatePacket;
+import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
@@ -80,6 +83,24 @@ public final class NmsVirtualActorBackend implements VirtualActorBackend {
         ServerPlayer npc = state.player(); npc.setPos(transform.x(), transform.y(), transform.z()); npc.setYRot(transform.yaw()); npc.setXRot(transform.pitch()); npc.setYHeadRot(transform.yaw());
         var scale = npc.getAttribute(Attributes.SCALE); if (scale != null && scale.getBaseValue() != transform.scale()) scale.setBaseValue(transform.scale());
         state.tracker().sendChanges(); sendEntityDataIfDirty(viewer, npc); updateNametag(actor, viewer, state, transform);
+    }
+
+    @Override public void playAction(ActorDefinition actor, Player viewer, ActorAction action) {
+        RenderedActor state = find(actor, viewer); if (state == null || action == null) return;
+        ServerPlayer npc = state.player();
+        var connection = ((CraftPlayer) viewer).getHandle().connection;
+        switch (action) {
+            case SWING -> connection.send(new ClientboundAnimatePacket(npc, ClientboundAnimatePacket.SWING_MAIN_HAND));
+            case HURT -> connection.send(new ClientboundAnimatePacket(npc, 1));
+            case DEATH -> connection.send(new ClientboundEntityEventPacket(npc, (byte) 3));
+            case START_SPRINT -> { npc.getBukkitEntity().setSprinting(true); sendEntityDataIfDirty(viewer, npc); }
+            case STOP_SPRINT -> { npc.getBukkitEntity().setSprinting(false); sendEntityDataIfDirty(viewer, npc); }
+            case START_SNEAK -> { npc.getBukkitEntity().setSneaking(true); sendEntityDataIfDirty(viewer, npc); }
+            case STOP_SNEAK -> { npc.getBukkitEntity().setSneaking(false); sendEntityDataIfDirty(viewer, npc); }
+            case START_GLIDE -> { npc.getBukkitEntity().setGliding(true); sendEntityDataIfDirty(viewer, npc); }
+            case STOP_GLIDE -> { npc.getBukkitEntity().setGliding(false); sendEntityDataIfDirty(viewer, npc); }
+            case USE -> { }
+        }
     }
 
     @Override public void destroy(ActorDefinition actor, Player viewer) {
