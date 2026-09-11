@@ -1,5 +1,6 @@
 package com.ultraop.aurareplay.director;
 
+import com.ultraop.aurareplay.actor.ActorActionEvent;
 import com.ultraop.aurareplay.actor.ActorDefinition;
 import com.ultraop.aurareplay.actor.ActorId;
 import com.ultraop.aurareplay.actor.ActorManager;
@@ -42,6 +43,7 @@ public final class DirectorRuntimeFrameRenderer {
     private final VirtualActorBackend actorBackend;
     private final Map<UUID, Set<ActorId>> renderedActors = new HashMap<>();
     private final Map<UUID, Map<ActorId, ActorVisualState>> visualStates = new HashMap<>();
+    private final Map<UUID, Map<ActorId, Long>> lastActionTicks = new HashMap<>();
 
     public DirectorRuntimeFrameRenderer(CameraController camera, ActorManager actorManager, VirtualActorBackend actorBackend) {
         this.camera = Objects.requireNonNull(camera, "camera");
@@ -56,7 +58,8 @@ public final class DirectorRuntimeFrameRenderer {
     /**
      * Renders a frame while isolating actor failures. One broken actor cannot prevent
      * the remaining actors from being updated or cleaned up. Transform updates remain
-     * frame-accurate, while visual state packets are emitted only when their state changes.
+     * frame-accurate, visual state packets are emitted only when their state changes,
+     * and sparse action events are emitted once when their timeline tick is crossed.
      */
     public RenderResult renderFrame(Player viewer, DirectorRenderFrame frame) {
         Objects.requireNonNull(viewer, "viewer");
@@ -70,6 +73,7 @@ public final class DirectorRuntimeFrameRenderer {
         Set<ActorId> previous = renderedActors.getOrDefault(viewerId, Set.of());
         Map<ActorId, ActorVisualState> previousStates = visualStates.getOrDefault(viewerId, Map.of());
         Map<ActorId, ActorVisualState> currentStates = new LinkedHashMap<>();
+        Map<ActorId, Long> actionCursor = lastActionTicks.computeIfAbsent(viewerId, ignored -> new HashMap<>());
         Map<ActorId, Throwable> failures = new LinkedHashMap<>();
         int rendered = 0;
         int removed = 0;
@@ -107,6 +111,14 @@ public final class DirectorRuntimeFrameRenderer {
                     actorBackend.updateEquipment(actor, viewer, sample.source());
                 }
 
+                for (ActorActionEvent event : frame.actions().getOrDefault(id, java.util.List.of())) {
+                    long eventTick = event.tick();
+                    Long previousActionTick = actionCursor.get(id);
+                    if (previousActionTick != null && eventTick <= previousActionTick) continue;
+                    actorBackend.playAction(actor, viewer, event.action());
+                    actionCursor.put(id, eventTick);
+                }
+
                 current.add(id);
                 currentStates.put(id, state);
                 rendered++;
@@ -120,6 +132,11 @@ public final class DirectorRuntimeFrameRenderer {
             }
         }
 
+        long sceneTick = Math.max(0L, (long) Math.floor(frame.sceneTick()));
+        for (Map.Entry<ActorId, Long> entry : new HashMap<>(actionCursor).entrySet()) {
+            if (entry.getValue() > sceneTick) actionCursor.put(entry.getKey(), sceneTick - 1L);
+        }
+
         for (ActorId id : previous) {
             if (current.contains(id)) continue;
             ActorDefinition actor = actorManager.get(id).orElse(null);
@@ -130,11 +147,13 @@ public final class DirectorRuntimeFrameRenderer {
             } catch (Throwable error) {
                 failures.putIfAbsent(id, error);
             }
+            actionCursor.remove(id);
         }
 
         if (current.isEmpty()) {
             renderedActors.remove(viewerId);
             visualStates.remove(viewerId);
+            lastActionTicks.remove(viewerId);
         } else {
             renderedActors.put(viewerId, current);
             visualStates.put(viewerId, currentStates);
@@ -147,6 +166,7 @@ public final class DirectorRuntimeFrameRenderer {
         UUID viewerId = viewer.getUniqueId();
         Set<ActorId> previous = renderedActors.remove(viewerId);
         visualStates.remove(viewerId);
+        lastActionTicks.remove(viewerId);
         if (previous == null) return;
         for (ActorId id : previous) {
             actorManager.get(id).ifPresent(actor -> {
@@ -162,6 +182,7 @@ public final class DirectorRuntimeFrameRenderer {
     public void clear() {
         renderedActors.clear();
         visualStates.clear();
+        lastActionTicks.clear();
     }
 
     public int renderedActorCount(Player viewer) {
