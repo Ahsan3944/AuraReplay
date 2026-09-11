@@ -24,10 +24,19 @@ public final class ActorActionPlayback {
         return events;
     }
 
-    /** Resets the cursor so the next advance includes events from tick zero. */
+    /** Returns actions crossed by reverse playback in the half-open interval [tick, previous). */
+    public List<ActorActionEvent> advanceReverse(long tick) {
+        if (tick < 0) throw new IllegalArgumentException("tick must be >= 0");
+        if (lastTick < 0 || tick > lastTick) return List.of();
+        List<ActorActionEvent> events = timeline.between(tick, lastTick);
+        lastTick = tick;
+        return events;
+    }
+
+    /** Resets the cursor so the next forward advance includes events from tick zero. */
     public void reset() { lastTick = -1L; }
 
-    /** Seeks without emitting events. */
+    /** Positions the cursor without emitting events. */
     public void seek(long tick) {
         if (tick < -1L) throw new IllegalArgumentException("tick must be >= -1");
         lastTick = tick;
