@@ -8,10 +8,12 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityToggleGlideEvent;
 import org.bukkit.event.player.PlayerAnimationEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
-import org.bukkit.event.entity.EntityToggleGlideEvent;
+import org.bukkit.inventory.EquipmentSlot;
 
 /** Captures sparse player animation/state events into the active tick recording. */
 public final class ActorActionCaptureListener implements Listener {
@@ -19,6 +21,10 @@ public final class ActorActionCaptureListener implements Listener {
     public ActorActionCaptureListener(TickRecorder recorder){this.recorder=recorder;}
     @EventHandler(priority=EventPriority.MONITOR,ignoreCancelled=true)
     public void onAnimation(PlayerAnimationEvent event){recorder.recordAction(event.getPlayer(),ActorAction.SWING);}
+    @EventHandler(priority=EventPriority.MONITOR,ignoreCancelled=true)
+    public void onInteract(PlayerInteractEvent event){
+        if(event.getHand()==EquipmentSlot.HAND) recorder.recordAction(event.getPlayer(),ActorAction.USE);
+    }
     @EventHandler(priority=EventPriority.MONITOR,ignoreCancelled=true)
     public void onDamage(EntityDamageEvent event){if(event.getEntity() instanceof Player player)recorder.recordAction(player,ActorAction.HURT);}
     @EventHandler(priority=EventPriority.MONITOR)
