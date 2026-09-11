@@ -18,6 +18,7 @@ public final class ActorPlayback {
     private final ActorActionPlayback actionPlayback;
     private long elapsedTicks;
     private double lastActionPosition = Double.NaN;
+    private boolean actionDirectionReverse;
 
     public ActorPlayback(ActorDefinition actor) { this(actor, new MemoryActorPlaybackSource(actor.recording().frames())); }
 
@@ -48,6 +49,7 @@ public final class ActorPlayback {
     /** Maps scene time to actor-local source time, preserving fractional ticks. */
     public void setScenePosition(double sceneTick) {
         if (!Double.isFinite(sceneTick)) return;
+        double previous = cursor.position();
         double local = Math.max(0.0d, sceneTick - actor.startDelayTicks());
         double position = local * actor.playbackSpeed();
         double duration = playbackDuration();
@@ -55,15 +57,30 @@ public final class ActorPlayback {
         cursor.seek(position);
         if (actor.loop() && duration > 0.0d) cursor.advance(0.0d, 1.0d, false, playbackDurationTicks(), true);
         elapsedTicks = Math.max(elapsedTicks, (long) Math.floor(Math.max(0.0d, sceneTick)));
+        if (Double.isFinite(lastActionPosition) && Math.abs(position - previous) > 1.0e-9d) {
+            resetActionCursorForSeek(position);
+        }
     }
 
     /** Returns actions crossed while moving to the requested actor-local source position. */
     public List<ActorActionEvent> actionsAt(double position) {
         if (!Double.isFinite(position)) return List.of();
         long tick = Math.max(0L, (long) Math.floor(position));
-        if (!Double.isNaN(lastActionPosition) && position < lastActionPosition) actionPlayback.reset();
-        List<ActorActionEvent> events = actionPlayback.advance(tick);
+        boolean reverse = actor.reverse();
+        if (reverse != actionDirectionReverse) {
+            resetActionCursorForDirection(position, reverse);
+        } else if (!Double.isNaN(lastActionPosition)) {
+            if (!reverse && position < lastActionPosition) resetActionCursorForDirection(position, false);
+            if (reverse && position > lastActionPosition) resetActionCursorForDirection(position, true);
+        } else {
+            resetActionCursorForDirection(position, reverse);
+        }
+
+        List<ActorActionEvent> events = reverse
+                ? actionPlayback.advanceReverse(tick)
+                : actionPlayback.advance(tick);
         lastActionPosition = position;
+        actionDirectionReverse = reverse;
         return events;
     }
 
@@ -71,8 +88,29 @@ public final class ActorPlayback {
         elapsedTicks = 0L;
         actionPlayback.reset();
         lastActionPosition = Double.NaN;
-        if (actor.reverse() && playbackDuration() > 0.0d) cursor.seek(playbackDuration() - 1.0d);
-        else cursor.reset();
+        actionDirectionReverse = actor.reverse();
+        if (actor.reverse() && playbackDuration() > 0.0d) {
+            cursor.seek(playbackDuration() - 1.0d);
+            actionPlayback.seek((long) Math.ceil(playbackDuration()));
+        } else {
+            cursor.reset();
+        }
+    }
+
+    private void resetActionCursorForSeek(double position) {
+        resetActionCursorForDirection(position, actor.reverse());
+        lastActionPosition = Double.NaN;
+    }
+
+    private void resetActionCursorForDirection(double position, boolean reverse) {
+        long tick = Math.max(0L, (long) Math.floor(position));
+        if (reverse) {
+            actionPlayback.seek(Math.max(tick, (long) Math.ceil(playbackDuration())));
+        } else {
+            actionPlayback.reset();
+        }
+        lastActionPosition = Double.NaN;
+        actionDirectionReverse = reverse;
     }
 
     public EntitySnapshot sample() { ActorSample sample = sampleState(); return sample == null ? null : sample.source(); }
